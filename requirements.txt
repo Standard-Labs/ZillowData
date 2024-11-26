@@ -1,0 +1,4 @@
+# API
+fastapi[standard]>=0.115.5
+pydantic>=2.9.2
+logfire[fastapi]>=2.4.1

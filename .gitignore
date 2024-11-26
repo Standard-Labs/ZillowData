@@ -1,0 +1,11 @@
+__pycache__/
+venv
+.DS_Store
+.ipynb_checkpoints
+
+keys.yaml
+keys_tests.yaml
+
+# Testing
+idev_*.*
+*.pkl

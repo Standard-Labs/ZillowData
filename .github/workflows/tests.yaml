@@ -1,0 +1,31 @@
+name: tests
+
+on:
+  push:
+    paths-ignore:
+      - docs/**/*.*
+      - README.md
+      - .github/workflows/google-cloud.yml
+      - .github/workflows/deploy-preview.yml
+      - .devcontainer/**/*.*
+  pull_request:
+    types:  # avoid double runs in open pr
+      - opened
+      - reopened
+  workflow_dispatch:
+  
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+        
+      - name: Inject keys
+        run: echo -en '${{ secrets.KEYS_YAML_TESTS }}' >> keys.yaml
+
+      - name: Build Docker container
+        run: docker build -t CONTAINER_NAME .
+        
+      - name: Run tests inside container
+        run: docker run CONTAINER_NAME sh -c "pip install --no-cache-dir -r tests/requirements.txt && pytest"
