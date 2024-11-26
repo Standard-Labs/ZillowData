@@ -15,7 +15,7 @@ logfire.configure(
 
 
 app = FastAPI(
-    title="API NAME",
+    title="Zillow Database API TESTING",
     description=(
         "API DESCRIPTION"
     )
@@ -37,5 +37,5 @@ app.add_middleware(
 async def root() -> dict[str, str]:
     """Root endpoint."""
     return {
-        "message": "Server alive and well."
+        "message": "Zillow Server alive and well."
     }

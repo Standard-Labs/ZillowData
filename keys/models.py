@@ -3,24 +3,34 @@ from pydantic import BaseModel
 from typing import Literal
 
 
-class LogfireModel(BaseModel):
-    """
-    Model for Logfire token.
-    """
-    write_token: str
-    environment: Literal["prod", "qa"]
+# class LogfireModel(BaseModel):
+#     """
+#     Model for Logfire token.
+#     """
+#     write_token: str
+#     environment: Literal["prod", "qa"]
 
 
-class ProviderNameModel(BaseModel):
+
+class ScraperAPIModel(BaseModel):
     """
-    Model for MongoDB credentials.
+    Model for ScraperAPI token.
     """
     api_key: str
+
+
+class SupabaseModel(BaseModel):
+    """
+    Model for Supabase credentials.
+    """
+    url: str
+    key: str
 
 
 class Keys(BaseModel):
     """
     Model for all keys.
     """
-    Logfire: LogfireModel
-    Provider: ProviderNameModel
+    # Logfire: LogfireModel
+    ScraperAPI: ScraperAPIModel
+    Supabase: SupabaseModel
