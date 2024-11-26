@@ -24,7 +24,7 @@ class SupabaseModel(BaseModel):
     Model for Supabase credentials.
     """
     url: str
-    key: str
+    secret: str
 
 
 class Keys(BaseModel):

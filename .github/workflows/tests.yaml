@@ -25,7 +25,7 @@ jobs:
         run: echo -en '${{ secrets.KEYS_YAML_TESTS }}' >> keys.yaml
 
       - name: Build Docker container
-        run: docker build -t CONTAINER_NAME .
+        run: docker build -t TEST_ZILLOW .
         
       - name: Run tests inside container
-        run: docker run CONTAINER_NAME sh -c "pip install --no-cache-dir -r tests/requirements.txt && pytest"
+        run: docker run TEST_ZILLOW sh -c "pip install --no-cache-dir -r tests/requirements.txt && pytest"
