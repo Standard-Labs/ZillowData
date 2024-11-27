@@ -1,4 +1,5 @@
 """ This module contains the FastAPI endpoints for (re)/initializing jobs and status. """
+from typing import Optional
 from fastapi import APIRouter
 from starlette import status
 from database.inserter import Inserter
@@ -21,8 +22,10 @@ scrape_router = APIRouter()
 # are handled SEQUENTIALLY. This is to prevent multiple scrapes from happening at the same time, which leads to
 # exceeding max threads allowed by Scraper API.
 @scrape_router.get("/scrape/{city}/{state}")
-async def initialize_job(city: str, state: str, max_pages: None):
+async def initialize_job(city: str, state: str, max_pages: int | None = None):
     """
+        scrape/city/state?max_pages=1 or scrape/city/state
+
         Attempts to initialize a scraping/insertion job for a city and state.
 
         Returns 200 if a job is completed successfully
