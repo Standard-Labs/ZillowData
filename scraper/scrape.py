@@ -254,7 +254,7 @@ def write_agents_to_csv(agents: List[Agent], file_name: str):
             writer.writerow(row)
 
 
-def scrape(city, state, supabaseClient) -> List[Agent]:
+def scrape(city, state, supabaseClient, max_pages=None) -> List[Agent]:
     """Main function to scrape data for specified city and state"""
 
     print(f'Fetching data for {city}-{state}')
@@ -268,7 +268,8 @@ def scrape(city, state, supabaseClient) -> List[Agent]:
             agent_data = []
             for agent_type in agent_types:
                 page_number = 1
-                max_pages = get_max_pages(city, state, agent_type)
+                if not max_pages:
+                    max_pages = get_max_pages(city, state, agent_type)
 
                 while page_number <= max_pages:
                     future = page_executor.submit(handle_page, city, state, agent_type, page_number)

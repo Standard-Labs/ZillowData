@@ -21,7 +21,7 @@ scrape_router = APIRouter()
 # are handled SEQUENTIALLY. This is to prevent multiple scrapes from happening at the same time, which leads to
 # exceeding max threads allowed by Scraper API.
 @scrape_router.get("/scrape/{city}/{state}")
-async def initialize_job(city: str, state: str):
+async def initialize_job(city: str, state: str, max_pages: None):
     """
         Attempts to initialize a scraping/insertion job for a city and state.
 
@@ -45,7 +45,7 @@ async def initialize_job(city: str, state: str):
 
         elif job_status.get('status') == 422 or job_status.get('status') == 404:
             # A previously failed job or a job that has not been initialized yet
-            scrape_and_insert(city, state)
+            scrape_and_insert(city, state, max_pages)
             complete_status = supabase_client.check_status(city, state)
 
             if complete_status.get('status') == 200:
@@ -64,7 +64,7 @@ async def initialize_job(city: str, state: str):
 
 
 @scrape_router.get("/rescrape/{city}/{state}")
-async def rescrape_data(city: str, state: str):
+async def rescrape_data(city: str, state: str, max_pages: None):
     """
     Attempts to re-scrape and update data for a city and state.
 
@@ -92,7 +92,7 @@ async def rescrape_data(city: str, state: str):
 
         elif job_status.get('status') == 422 or job_status.get('status') == 200:
             # A previously failed job or a job that has been prev. been completed(data is available)
-            scrape_and_insert(city, state)
+            scrape_and_insert(city, state, max_pages)
             complete_status = supabase_client.check_status(city, state)
 
             if complete_status.get('status') == 200:
@@ -144,7 +144,7 @@ def check_status(city: str, state: str):
         return {"message": "Error", "error": str(e)}, status.HTTP_500_INTERNAL_SERVER_ERROR
 
 
-def scrape_and_insert(city: str, state: str):
+def scrape_and_insert(city: str, state: str, max_pages: None):
     """
         Job Orchestrator: Scrapes data for a city and state, and inserts it into the database.
         Temporary structure for now, can improve later.
@@ -154,7 +154,7 @@ def scrape_and_insert(city: str, state: str):
     """
     try:
         inserter = Inserter(supabase_client)
-        agents = scrape(city, state, supabase_client)
+        agents = scrape(city, state, supabase_client, max_pages)
         inserter.insert_agents(agents, city, state)
 
     except Exception as e:
