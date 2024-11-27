@@ -3,7 +3,6 @@ from fastapi import APIRouter
 from starlette import status
 from database.inserter import Inserter
 from scraper.scrape import scrape
-from keys import KEYS
 from api.db_init import supabase_client
 
 scrape_router = APIRouter()
