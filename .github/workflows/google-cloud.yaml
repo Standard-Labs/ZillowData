@@ -40,8 +40,8 @@ jobs:
       - name: Push Docker image to GCP Artifact Registry
         run: |
           gcloud auth configure-docker
-          docker tag zillow-data-collector gcr.io/zillow-test/zillow-data-collector
-          docker push gcr.io/zillow-test/zillow-data-collector
+          docker tag zillow-data-collector gcr.io/zillow-test-442918/zillow-data-collector
+          docker push gcr.io/zillow-test-442918/zillow-data-collector
   deploy:
     runs-on: ubuntu-latest
     needs: build
@@ -57,7 +57,7 @@ jobs:
         uses: 'google-github-actions/deploy-cloudrun@v2'
         with:
           service: zillow-data-collector
-          image: gcr.io/zillow-test/zillow-data-collector
+          image: gcr.io/zillow-test-442918/zillow-data-collector
           region: us-central1
           flags: '--min-instances=0 --allow-unauthenticated'
 
