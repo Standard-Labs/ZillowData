@@ -1,5 +1,4 @@
 """ This module contains the FastAPI endpoints for (re)/initializing jobs and status. """
-from typing import Optional
 from fastapi import APIRouter
 from starlette import status
 from database.inserter import Inserter
@@ -67,7 +66,7 @@ async def initialize_job(city: str, state: str, max_pages: int | None = None):
 
 
 @scrape_router.get("/rescrape/{city}/{state}")
-async def rescrape_data(city: str, state: str, max_pages: None):
+async def rescrape_data(city: str, state: str, max_pages: int | None = None):
     """
     Attempts to re-scrape and update data for a city and state.
 
@@ -147,7 +146,7 @@ def check_status(city: str, state: str):
         return {"message": "Error", "error": str(e)}, status.HTTP_500_INTERNAL_SERVER_ERROR
 
 
-def scrape_and_insert(city: str, state: str, max_pages: None):
+def scrape_and_insert(city: str, state: str, max_pages: int | None = None):
     """
         Job Orchestrator: Scrapes data for a city and state, and inserts it into the database.
         Temporary structure for now, can improve later.

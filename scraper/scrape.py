@@ -128,7 +128,7 @@ def handle_individual(agent: Agent) -> Agent:
             for listing in listings:
                 try:
                     curr_list = Listing(**listing)
-                    curr_list.type = "SALE"
+                    curr_list.type = "FOR SALE"
                     all_listing.append(curr_list)
                 except ValidationError as e:
                     print(f"Error validating FOR SALE listing for {agent.full_name}: {e}")
@@ -144,7 +144,7 @@ def handle_individual(agent: Agent) -> Agent:
             for listing in rent_listings:
                 try:
                     curr_list = Listing(**listing)
-                    curr_list.type = "RENT"
+                    curr_list.type = "FOR RENT"
                     all_rent_listing.append(curr_list)
                 except ValidationError as e:
                     print(f"Error validating FOR RENT listing for {agent.full_name}: {e}")
@@ -254,7 +254,7 @@ def write_agents_to_csv(agents: List[Agent], file_name: str):
             writer.writerow(row)
 
 
-def scrape(city, state, supabaseClient, max_pages=None) -> List[Agent]:
+def scrape(city, state, supabaseClient, max_pages: int | None = None) -> List[Agent]:
     """Main function to scrape data for specified city and state"""
 
     print(f'Fetching data for {city}-{state}')
