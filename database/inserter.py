@@ -169,7 +169,7 @@ class Inserter:
             if not agents:
                 self.insert_status(city, state, "ERROR")
                 return
-
+        
             for agent in agents:
                 self.insert_individual_agent(agent, city, state)
                 self.insert_city(city, state, agent)

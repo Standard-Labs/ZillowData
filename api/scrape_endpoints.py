@@ -20,6 +20,7 @@ scrape_router = APIRouter()
 # Even though scraping and insertion are not asynchronous, the endpoint should be asynchronous, so concurrent requests
 # are handled SEQUENTIALLY. This is to prevent multiple scrapes from happening at the same time, which leads to
 # exceeding max threads allowed by Scraper API.
+# Not sure why this is the case...
 @scrape_router.get("/scrape/{city}/{state}")
 async def initialize_job(city: str, state: str, max_pages: int | None = None):
     """

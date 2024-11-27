@@ -263,7 +263,7 @@ def scrape(city, state, supabaseClient, max_pages: int | None = None) -> List[Ag
     db_insert.insert_status(city, state, "PENDING")
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as page_executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as page_executor:
             futures = []
             agent_data = []
             for agent_type in agent_types:
@@ -284,7 +284,7 @@ def scrape(city, state, supabaseClient, max_pages: int | None = None) -> List[Ag
 
         agent_data = remove_duplicates(agent_data)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as agent_executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as agent_executor:
             processed_agents = []
             for agent in agent_executor.map(handle_individual, agent_data):
                 if agent is not None:
