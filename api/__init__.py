@@ -7,11 +7,11 @@ from keys import KEYS
 
 
 # Initialize Logfire
-# logfire.configure(
-#     token=KEYS.Logfire.write_token,
-#     environment=KEYS.Logfire.environment,
-#     scrubbing=False
-# )
+logfire.configure(
+    token=KEYS.Logfire.write_token,
+    environment=KEYS.Logfire.environment,
+    scrubbing=False
+)
 
 
 app = FastAPI(
@@ -20,7 +20,7 @@ app = FastAPI(
         "API for scraping Zillow and querying the database."
     )
 )
-# logfire.instrument_fastapi(app, capture_headers=True)
+logfire.instrument_fastapi(app, capture_headers=True)
 
 
 # Add middleware to disable CORS and allow all origins

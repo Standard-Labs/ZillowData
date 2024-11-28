@@ -1,3 +1,4 @@
+import logfire
 from supabase import create_client
 from scraper.models import JobStatus
 
@@ -20,7 +21,7 @@ class SupabaseClient:
 
             return response
         except Exception as e:
-            print(f"Error inserting data into {table_name}: {e}")
+            logfire.error(f"Error inserting data into {table_name}: {e}")
             return None
 
     def fetch_data(self, table_name, filters=None, select_data="*"):
@@ -34,7 +35,7 @@ class SupabaseClient:
                 query = query.eq(key, value)
             return query.execute()
         except Exception as e:
-            print(f"Error fetching data from {table_name}: {e}")
+            logfire.error(f"Error fetching data from {table_name}: {e}")
             return None
 
     def check_status(self, city, state):
@@ -51,7 +52,7 @@ class SupabaseClient:
                 # This should not ever happen, since the city_id should always exist in the status table if the city has
                 # an entry in the city table. The presence of an entry in the city table guarantees an entry in the
                 # status table and vice versa.
-                print(f"City ID Found {city_id} but no entry in status table")
+                logfire.error(f"City ID {city_id} does not exist in the status table.")
                 return JobStatus.NOT_SCRAPED
 
             job_status = response.data[0].get("job_status")
@@ -73,7 +74,7 @@ class SupabaseClient:
                 return JobStatus.UNKNOWN
 
         except Exception as e:
-            print(f"Error checking status for {city}, {state}: {e}")
+            logfire.error(f"Error checking status for {city}, {state}: {e}")
             return JobStatus.INTERNAL_ERROR
 
     def get_city_id(self, city, state):
@@ -85,7 +86,7 @@ class SupabaseClient:
             else:
                 return None
         except Exception as e:
-            print(f"Error getting city id for {city}, {state}: {e}")
+            logfire.error(f"Error getting city ID for {city}, {state}: {e}")
             return None
 
     def get_agent(self, encodedZuid: str):
@@ -97,7 +98,7 @@ class SupabaseClient:
             else:
                 return None
         except Exception as e:
-            print(f"Error getting Agent Object for {encodedZuid}: {e}")
+            logfire.error(f"Error getting agent data for {encodedZuid}: {e}")
             return False
 
     def get_agent_cities(self, encodedZuid: str, city_id: int):
@@ -109,6 +110,6 @@ class SupabaseClient:
             else:
                 return None
         except Exception as e:
-            print(f"Error getting agent cities for {encodedZuid}: {e}")
+            logfire.error(f"Error getting agent cities for {encodedZuid}: {e}")
             return None
 

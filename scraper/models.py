@@ -79,9 +79,9 @@ class Agent(BaseModel):
 
 agent_types = [
     "listing-agent",
-    # "buyers-agent",
-    # "relocation",
-    # "foreclosure"
+    "buyers-agent",
+    "relocation",
+    "foreclosure"
 ]
 
 class JobStatus(Enum):

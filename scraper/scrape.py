@@ -2,6 +2,7 @@ import json
 import math
 import time
 from functools import wraps
+import logfire
 from pydantic import ValidationError
 from typing import List
 import requests
@@ -25,11 +26,12 @@ def retry(retries=3, delay=2, return_value=None):
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
-                    print(f"Attempt {attempt} failed: {e}")
+                    # print(f"Attempt {attempt} failed: {e}")
                     if attempt < retries:
-                        print(f"Retrying in {delay} seconds...")
+                        # print(f"Retrying in {delay} seconds...")
                         time.sleep(delay)
-            print(f"All {retries} attempts failed for {func.__name__}")
+            logfire.error(f"All {retries} attempts failed for {func.__name__}")
+            # print(f"All {retries} attempts failed for {func.__name__}")
             return return_value
 
         return wrapper
@@ -113,12 +115,14 @@ def handle_individual(agent: Agent) -> Agent:
             phones = parsed_data['props']['pageProps']['displayUser'].get('phoneNumbers', {})
             agent.phoneNumbers = Phones(**phones) if phones else None
         except Exception as e:
-            print(f"Error extracting phone numbers for {agent.full_name}: {e}")
+            # print(f"Error extracting phone numbers for {agent.full_name}: {e}")
+            pass
 
         try:
             agent.email = parsed_data['props']['pageProps']['displayUser'].get('email', None)
         except Exception as e:
-            print(f"Error extracting email for {agent.full_name}: {e}")
+            # print(f"Error extracting email for {agent.full_name}: {e}")
+            pass
 
         # Handle for-sale listings
         for_sale_listing = parsed_data['props']['pageProps'].get('forSaleListings', {})
@@ -131,9 +135,11 @@ def handle_individual(agent: Agent) -> Agent:
                     curr_list.type = "FOR SALE"
                     all_listing.append(curr_list)
                 except ValidationError as e:
-                    print(f"Error validating FOR SALE listing for {agent.full_name}: {e}")
+                    # print(f"Error validating FOR SALE listing for {agent.full_name}: {e}")
+                    pass
                 except Exception as e:
-                    print(f"Error processing FOR SALE listing for {agent.full_name}: {e}")
+                    # print(f"Error processing FOR SALE listing for {agent.full_name}: {e}")
+                    pass
         agent.forSaleListing = all_listing
 
         # Handle for-rent listings
@@ -147,9 +153,11 @@ def handle_individual(agent: Agent) -> Agent:
                     curr_list.type = "FOR RENT"
                     all_rent_listing.append(curr_list)
                 except ValidationError as e:
-                    print(f"Error validating FOR RENT listing for {agent.full_name}: {e}")
+                    # print(f"Error validating FOR RENT listing for {agent.full_name}: {e}")
+                    pass
                 except Exception as e:
-                    print(f"Error processing FOR RENT listing for {agent.full_name}: {e}")
+                    # print(f"Error processing FOR RENT listing for {agent.full_name}: {e}")
+                    pass
         agent.forRentListing = all_rent_listing
 
         # Handle past sales
@@ -165,12 +173,15 @@ def handle_individual(agent: Agent) -> Agent:
                     listing.address.line1 = past_sale_info.get("street_address", None)
                     listing.address.city = past_sale_info.get("city", None)
                     listing.address.state_or_province = past_sale_info.get("state", None)
+                    zip = past_sale_info.get("city_state_zipcode", None)
                     listing.address.postal_code = past_sale_info.get("city_state_zipcode", None).split(", ")[2]
                     past_sale_listings.append(listing)
                 except ValidationError as e:
-                    print(f"Error validating past sale for {agent.full_name}: {e}")
+                    # print(f"Error validating past sale for {agent.full_name}: {e}")
+                    pass
                 except Exception as e:
-                    print(f"Error processing past sale for {agent.full_name}: {e}")
+                    # print(f"Error processing past sale for {agent.full_name}: {e}")
+                    pass
         agent.pastSales = past_sale_listings
 
         # Handle websites
@@ -183,14 +194,17 @@ def handle_individual(agent: Agent) -> Agent:
                     try:
                         websites_list.append(Website(**link))
                     except ValidationError as e:
-                        print(f"Error validating website for {agent.full_name}: {e}")
+                        # print(f"Error validating website for {agent.full_name}: {e}")
+                        pass
                     except Exception as e:
-                        print(f"Error processing website for {agent.full_name}: {e}")
+                        # print(f"Error processing website for {agent.full_name}: {e}")
+                        pass
         agent.websites = websites_list
 
         return agent
     else:
-        print(f"No profile link for {agent.full_name}")
+        # print(f"No profile link for {agent.full_name}")
+        logfire.error(f"No profile link for {agent.full_name}")
         return agent
 
 
@@ -204,7 +218,8 @@ def handle_page(city_name, state, agent_type, page_number) -> List[Agent]:
     script_tag = soup.find("script", id="__NEXT_DATA__")
 
     if script_tag:
-        print(f"Initial Scrape for Page {page_number}  Agent Type: {agent_type}")
+        # print(f"Initial Scrape for Page {page_number}  Agent Type: {agent_type}")
+        logfire.info(f"Initial Scrape for Page {page_number}  Agent Type: {agent_type}")
         parsed_data = parse_json_data(script_tag)
         agents = extract_agents(parsed_data, agent_type, page_number)
         return agents
@@ -257,7 +272,7 @@ def write_agents_to_csv(agents: List[Agent], file_name: str):
 def scrape(city, state, supabaseClient, max_pages: int | None = None) -> List[Agent]:
     """Main function to scrape data for specified city and state"""
 
-    print(f'Fetching data for {city}-{state}')
+    logfire.info(f"Scraping data for {city}, {state}")
 
     db_insert = Inserter(db_client=supabaseClient)
     db_insert.insert_status(city, state, "PENDING")
@@ -268,10 +283,9 @@ def scrape(city, state, supabaseClient, max_pages: int | None = None) -> List[Ag
             agent_data = []
             for agent_type in agent_types:
                 page_number = 1
-                if not max_pages:
-                    max_pages = get_max_pages(city, state, agent_type)
+                agent_type_max_pages = max_pages or get_max_pages(city, state, agent_type)
 
-                while page_number <= max_pages:
+                while page_number <= agent_type_max_pages:
                     future = page_executor.submit(handle_page, city, state, agent_type, page_number)
                     futures.append(future)
                     page_number += 1
@@ -294,5 +308,4 @@ def scrape(city, state, supabaseClient, max_pages: int | None = None) -> List[Ag
 
     except Exception as e:
         db_insert.insert_status(city, state, "ERROR")
-        print(f"Error scraping data for {city}-{state}")
         return []

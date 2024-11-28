@@ -1,20 +1,20 @@
-import multiprocessing
 from typing import List
 from database.client import SupabaseClient
 from scraper.models import Agent, Address
+import logfire
 
 class Inserter:
     def __init__(self, db_client: SupabaseClient):
         self.db_client = db_client
 
     def prepare_agent_city(self, agent: Agent, city: str, state: str, city_id: str):
+        """ Prepare the agent-city junction table data """
         
         return {'city_id': city_id, 'agent_id': agent.encodedzuid}
     
     def insert_city(self, city: str, state: str):
         """
-        Insert city into the city table if it does not exist, and update the junction table with the agent and city.
-        This will upsert the agent-city relation
+        Insert the city into the City Table if it does not exist, else return the city
         """
         try:
             city = city.upper()
@@ -28,10 +28,14 @@ class Inserter:
             else:
                 return city_id
         except Exception as e:
-            print(f"Error inserting city {city}, {state}: {e}")
+            logfire.error(f"Error inserting city {city}, {state}: {e}")
             return None
 
     def insert_status(self, city: str, state: str, status: str):
+        """ 
+        Insert the status of the job for the specified city and state
+        Status can be one of: PENDING, COMPLETED, ERROR
+        """
         try:
             city_id = self.db_client.get_city_id(city, state)
             if city_id is not None:
@@ -43,11 +47,11 @@ class Inserter:
                 status_data = {'city_id': self.db_client.get_city_id(city, state), 'job_status': status, "last_updated": "now()"}
                 self.db_client.insert_data(table_name="status", data=status_data, on_conflict="city_id")
         except Exception as e:
-            print(f"Error inserting status for {city}, {state}: {e}")
-
+            logfire.error(f"Error inserting status for {city}, {state}: {e}")
+            return None
+        
     def prepare_individual_agent(self, agent: Agent, city: str, state: str):
-        # Will function for both new agents, and updating existing agents
-        # The city is updated in the agent_city junction table in insert_city
+        """ Prepare the agent data for batch insertion """
         try:
             page_num = agent.page
             specialties = agent.specialties
@@ -77,10 +81,11 @@ class Inserter:
             return agent_data
 
         except Exception as e:
-            print(f"Error inserting agent {agent.encodedzuid} for {city}, {state}: {e}")
+            logfire.error(f"Error inserting agent {agent.encodedzuid}: {e}")
             return []
 
     def prepare_phones(self, agent: Agent):
+        """ Prepare the phone data for batch insertion """
         try:
             phone_data = {}
             if agent.phoneNumber:
@@ -109,10 +114,11 @@ class Inserter:
                         })
             return phones
         except Exception as e:
-            print(f"Error inserting phone numbers for agent {agent.encodedzuid}: {e}")
+            logfire.error(f"Error inserting phone for agent {agent.encodedzuid}: {e}")
             return []
 
     def prepare_websites(self, agent: Agent):
+        """ Prepare the website data for batch insertion """
 
         # enforcing uniqueness of website url and agent pair 
         # only have to do it here because we are batch inserting
@@ -128,31 +134,45 @@ class Inserter:
                 websites.append(website_data)
                 # self.db_client.insert_data(table_name="website", data=website_data, on_conflict="agent_id, website_url")
             except Exception as e:
-                print(f"Error inserting website for agent {agent.encodedzuid}: {e}")
+                logfire.error(f"Error inserting website for agent {agent.encodedzuid}: {e}")
                 return []
         return websites
 
-    def insert_address(self, addresses: list[Address], agent_id: str):
+    def insert_address(self, address: Address, agent_id: str):
+        """ Insert the address data for the agent, not batched """
         try:
-            address_data = []
-            for address in addresses:
-                address_data.append({
-                    'line1': address.line1,
-                    'line2': address.line2,
-                    'state_or_province': address.state_or_province,
-                    'city': address.city,
-                    'postal_code': address.postal_code
-                })
-                return address_data
+            address_data = {
+                'line1': address.line1,
+                'line2': address.line2,
+                'state_or_province': address.state_or_province,
+                'city': address.city,
+                'postal_code': address.postal_code,
+            }
+            address_id = self.db_client.insert_data(table_name="address", data=address_data).data[0].get('id')
+            return address_id
         except Exception as e:
-            print(f"Error preparing addresses for agent {agent_id}: {e}")
+            logfire.error(f"Error inserting address for agent {agent_id}: {e}")
             return None
 
     def insert_listings(self, agent: Agent):
+        """ 
+        Batch Insert the listings data for the agent 
+        Also batch insert the junction table data for the agent-listing relationship
+        """
         try:
+            listings_all_data = []
+            listing_agent_data = []
+            seen_zpids = set()
             for listing in agent.pastSales + agent.forRentListing + agent.forSaleListing:
                 address_id = self.insert_address(listing.address, agent.encodedzuid)
-                if address_id:
+
+                if listing.zpid in seen_zpids:
+                    logfire.info(f"Duplicate listing found for zpid {listing.zpid}, skipping.")
+                    continue
+            
+                seen_zpids.add(listing.zpid)
+
+                if address_id:                    
                     listing_data = {
                         'type': listing.type,
                         'zpid': listing.zpid,
@@ -177,111 +197,96 @@ class Inserter:
                         'living_area_units_short': listing.living_area_units_short,
                         'mls_logo_src': str(listing.mls_logo_src)
                     }
-                    response = self.db_client.insert_data(table_name="listing", data=listing_data, on_conflict="zpid")
-                    if response.data[0].get('zpid'):
-                        self.db_client.insert_data(table_name="listing_agent",
-                                                   data={'agent_id': agent.encodedzuid, 'listing_id': listing.zpid},
-                                                   on_conflict="agent_id, listing_id")
-                    else:
-                        print(f"Error inserting listing {listing.zpid} for agent {agent.encodedzuid} Into agent_listing"
-                              f"table")
+
+                    listings_all_data.append(listing_data)
+                    listing_agent_data.append({'agent_id': agent.encodedzuid, 'listing_id': listing.zpid})
                 else:
-                    print(f"Error inserting listing {listing.zpid} for agent {agent.encodedzuid}: Address could not "
-                          f"be inserted")
+                    logfire.error(f"Error inserting address for listing {listing.zpid} for agent {agent.encodedzuid}")
+                    continue
+            
+            if listings_all_data:
+                response = self.db_client.insert_data(table_name="listing", data=listings_all_data, on_conflict="zpid")
+                if response is None:
+                    logfire.error(f"Error inserting listings for agent {agent.encodedzuid}: Listing table could not be inserted")
+                    return None
+                else:
+                    listing_agent_response = self.db_client.insert_data(table_name="listing_agent", data=listing_agent_data, on_conflict="agent_id, listing_id")
+                    if listing_agent_response is None:
+                        logfire.error(f"Error inserting listings for agent {agent.encodedzuid}: Listing-Agent junction table could not be inserted")
+                        return None
+                        # probably need to delete the listings that were inserted
+                    
+                return listing_agent_response
+            else:
+                # No listings to insert
+                return None
+        
         except Exception as e:
-            print(f"Error inserting listings for agent {agent.encodedzuid}: {e}")
+            logfire.error(f"Error inserting listings for agent {agent.encodedzuid}: {e}")
+            return None
 
     def insert_agents(self, agents: List[Agent] | None, city: str, state: str):
+        """ Process agent data into batches and insert into the database """
         
         try:
+            logfire.info(f"Inserting agents for {city}, {state}")
+
             if not agents:
                 self.insert_status(city, state, "ERROR")
                 return
             
             city_id = self.insert_city(city, state)
 
-            agent_data = []
-            agent_city_data = []
-            phones_data = []
-            websites_data = []
-            address_data = []
-            listing_data = []
-            for agent in agents:
-                agent_data.append(self.prepare_individual_agent(agent, city, state))
-                agent_city_data.append(self.prepare_agent_city(agent, city, state, city_id))
-                phones_data.extend(self.prepare_phones(agent))
-                websites_data.extend(self.prepare_websites(agent))
-                # skip listings + addresses for now 
-                
-                # address_data.extend(self.insert_address(agent.forRentListing + agent.forSaleListing + agent.pastSales, agent.encodedzuid))
+            batch_size = 300
 
+            for i in range(0, len(agents), batch_size):
+                batch = agents[i:i + batch_size]
 
-            # batch insert data
-            self.db_client.insert_data(table_name="agent", data=agent_data, on_conflict="encodedzuid")
-            self.db_client.insert_data(table_name="agent_city", data=agent_city_data, on_conflict="city_id, agent_id")
-            self.db_client.insert_data(table_name="phone", data=phones_data, on_conflict="phone, agent_id")
-            self.db_client.insert_data(table_name="website", data=websites_data, on_conflict="agent_id, website_url")
-            # address_response = self.db_client.insert_data(table_name="address", data=address_data)
+                agent_data = []
+                agent_city_data = []
+                phones_data = []
+                websites_data = []
 
+                for agent in batch:
+                    agent_data.append(self.prepare_individual_agent(agent, city, state))
+                    agent_city_data.append(self.prepare_agent_city(agent, city, state, city_id))
+                    phones_data.extend(self.prepare_phones(agent))
+                    websites_data.extend(self.prepare_websites(agent))
 
+                try:                    
+                    if agent_data:
+                        response = self.db_client.insert_data(table_name="agent", data=agent_data, on_conflict="encodedzuid")
+                        if response is None:
+                            logfire.error(f"Error batch inserting agent data for batch {i/batch_size} in {city}, {state}. Skipping batch.")
+                        else:
+                            if agent_city_data:
+                                response = self.db_client.insert_data(table_name="agent_city", data=agent_city_data, on_conflict="city_id, agent_id")
+                                if response is None:
+                                    logfire.error(f"Error batch inserting agent-city data for batch {i/batch_size} in {city}, {state}")
+                                    # probably need to delete the agents that were inserted?
+                                    
+                            if phones_data:
+                                response = self.db_client.insert_data(table_name="phone", data=phones_data, on_conflict="phone, agent_id")
+                                if response is None:
+                                    logfire.error(f"Error batch inserting phone data for batch {i/batch_size} in {city}, {state}")
+
+                            if websites_data:
+                                response = self.db_client.insert_data(table_name="website", data=websites_data, on_conflict="agent_id, website_url")
+                                if response is None:
+                                    logfire.error(f"Error batch inserting website data for batch {i/batch_size} in {city}, {state}")
+                                    
+                            # NOTE: The listings for ONE agent are bulk inserted, not the entire batch is bulk inserted
+                            for agent in batch:
+                                self.insert_listings(agent)
+                    else:
+                        logfire.error(f"Error batch inserting agent data for batch {i/batch_size} in {city}, {state}. No agent data to insert.")
+
+                except Exception as batch_error:
+                    logfire.error(f"Error batch inserting agent data for batch {i/batch_size} in {city}, {state}: {batch_error}")
+                    self.insert_status(city, state, "ERROR")
+            
             self.insert_status(city, state, "COMPLETED")
 
         except Exception as e:
-            print(f"Error inserting agents for {city}, {state}: {e}")
+            logfire.error(f"Error inserting agents for {city}, {state}: {e}")
             self.insert_status(city, state, "ERROR")
-
-
-
-
-
-
-             # def process_agents_batch(self, agents_batch: List[Agent], city: str, state: str, city_id: int):
-    
-    
-    
-    
-    
-    # mulit processing testing 
-    
-    #     try:
-    #         agent_data = []
-    #         agent_city_data = []
-    #         phones_data = []
-    #         websites_data = []
-    #         for agent in agents_batch:
-    #             agent_data.append(self.insert_individual_agent(agent, city, state))
-    #             agent_city_data.append(self.insert_agent_city(agent, city, state, city_id))
-    #             phones_data.extend(self.insert_phones(agent))
-    #             websites_data.extend(self.insert_websites(agent))
-            
-    #         self.db_client.insert_data(table_name="agent", data=agent_data, on_conflict="encodedzuid")
-    #         self.db_client.insert_data(table_name="agent_city", data=agent_city_data, on_conflict="city_id, agent_id")
-    #         self.db_client.insert_data(table_name="phone", data=phones_data, on_conflict="phone, agent_id")
-    #         self.db_client.insert_data(table_name="website", data=websites_data, on_conflict="agent_id, website_url")
-
-    #         # skip listings + addresses for now 
-
-    #     except Exception as e:
-    #         print(f"Error processing agent batch for {city}, {state}: {e}")
-
-
-
-    # def insert_agents(self, agents: List[Agent] | None, city: str, state: str):
-    #     try:
-    #         if not agents:
-    #             self.insert_status(city, state, "ERROR")
-    #             return
-            
-    #         city_id = self.insert_city(city, state)
-            
-    #         batch_size = 50
-    #         agent_batches = [agents[i:i + batch_size] for i in range(0, len(agents), batch_size)]
-            
-    #         with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-    #             pool.starmap(self.process_agents_batch, [(batch, city, state, city_id) for batch in agent_batches])
-
-    #         self.insert_status(city, state, "COMPLETED")
-
-    #     except Exception as e:
-    #         print(f"Error inserting agents for {city}, {state}: {e}")
-    #         self.insert_status(city, state, "ERROR")

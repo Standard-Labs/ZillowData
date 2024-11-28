@@ -1,5 +1,6 @@
 """ This module contains the FastAPI endpoints for (re)/initializing jobs and status. """
 from fastapi import APIRouter, Response
+import logfire
 from starlette import status
 from database.inserter import Inserter
 from scraper.scrape import scrape
@@ -53,6 +54,7 @@ async def handle_job(city: str, state: str, max_pages: int | None = None, rescra
             job_status = supabase_client.check_status(city, state)
 
             if job_status is JobStatus.NOT_SCRAPED or job_status is JobStatus.ERROR:
+                logfire.info(f"Initializing job for {city}, {state}")
                 scrape_and_insert(city, state, max_pages)
                 complete_status = supabase_client.check_status(city, state)
 
@@ -135,5 +137,5 @@ def scrape_and_insert(city: str, state: str, max_pages: int | None = None):
         # await loop.run_in_executor(None, inserter.insert_agents, agents, city, state)
 
     except Exception as e:
-        print(f"Error scraping and inserting data for {city}, {state}: {e}")
+        logfire.error(f"Error in scrape_and_insert for {city}, {state}. Error: {str(e)}")
 
