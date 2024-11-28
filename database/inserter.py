@@ -138,22 +138,6 @@ class Inserter:
                 return []
         return websites
 
-    def insert_address(self, address: Address, agent_id: str):
-        """ Insert the address data for the agent, not batched """
-        try:
-            address_data = {
-                'line1': address.line1,
-                'line2': address.line2,
-                'state_or_province': address.state_or_province,
-                'city': address.city,
-                'postal_code': address.postal_code,
-            }
-            address_id = self.db_client.insert_data(table_name="address", data=address_data).data[0].get('id')
-            return address_id
-        except Exception as e:
-            logfire.error(f"Error inserting address for agent {agent_id}: {e}")
-            return None
-
     def insert_listings(self, agent: Agent):
         """ 
         Batch Insert the listings data for the agent 
@@ -164,46 +148,44 @@ class Inserter:
             listing_agent_data = []
             seen_zpids = set()
             for listing in agent.pastSales + agent.forRentListing + agent.forSaleListing:
-                address_id = self.insert_address(listing.address, agent.encodedzuid)
-
                 if listing.zpid in seen_zpids:
                     logfire.info(f"Duplicate listing found for zpid {listing.zpid}, skipping.")
                     continue
             
                 seen_zpids.add(listing.zpid)
 
-                if address_id:                    
-                    listing_data = {
-                        'type': listing.type,
-                        'zpid': listing.zpid,
-                        'address_id': address_id,
-                        'bedrooms': listing.bedrooms,
-                        'bathrooms': listing.bathrooms,
-                        'latitude': listing.latitude,
-                        'longitude': listing.longitude,
-                        'price': str(listing.price),
-                        'price_currency': listing.price_currency,
-                        'status': listing.status,
-                        'home_type': listing.home_type,
-                        'brokerage_name': listing.brokerage_name,
-                        'home_marketing_status': listing.home_marketing_status,
-                        'home_marketing_type': listing.home_marketing_type,
-                        'listing_url': str(listing.listing_url),
-                        'has_open_house': listing.has_open_house,
-                        'represented': listing.represented,
-                        'sold_date': listing.sold_date,
-                        'home_details_url': str(listing.home_details_url),
-                        'living_area_value': listing.living_area_value,
-                        'living_area_units_short': listing.living_area_units_short,
-                        'mls_logo_src': str(listing.mls_logo_src)
-                    }
+                listing_data = {
+                    'type': listing.type,
+                    'zpid': listing.zpid,
+                    'bedrooms': listing.bedrooms,
+                    'bathrooms': listing.bathrooms,
+                    'latitude': listing.latitude,
+                    'longitude': listing.longitude,
+                    'price': str(listing.price),
+                    'price_currency': listing.price_currency,
+                    'status': listing.status,
+                    'home_type': listing.home_type,
+                    'brokerage_name': listing.brokerage_name,
+                    'home_marketing_status': listing.home_marketing_status,
+                    'home_marketing_type': listing.home_marketing_type,
+                    'listing_url': str(listing.listing_url),
+                    'has_open_house': listing.has_open_house,
+                    'represented': listing.represented,
+                    'sold_date': listing.sold_date,
+                    'home_details_url': str(listing.home_details_url),
+                    'living_area_value': listing.living_area_value,
+                    'living_area_units_short': listing.living_area_units_short,
+                    'mls_logo_src': str(listing.mls_logo_src),
+                    'line1': listing.address.line1,
+                    'line2': listing.address.line2,
+                    'state_or_province': listing.address.state_or_province,
+                    'city': listing.address.city,
+                    'postal_code': listing.address.postal_code
+                }
 
-                    listings_all_data.append(listing_data)
-                    listing_agent_data.append({'agent_id': agent.encodedzuid, 'listing_id': listing.zpid})
-                else:
-                    logfire.error(f"Error inserting address for listing {listing.zpid} for agent {agent.encodedzuid}")
-                    continue
-            
+                listings_all_data.append(listing_data)
+                listing_agent_data.append({'agent_id': agent.encodedzuid, 'listing_id': listing.zpid})
+        
             if listings_all_data:
                 response = self.db_client.insert_data(table_name="listing", data=listings_all_data, on_conflict="zpid")
                 if response is None:

@@ -61,3 +61,7 @@ fastapi run api --app app --workers 4
 ```
 
 The number of workers should be $(2* numcores) + 1$. Don't include vCPUs in the calculation of $numcores$. So use 5 workers for a 2 CPU cores deployment. 
+
+## Current Implementation
+
+- 
