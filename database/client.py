@@ -1,4 +1,5 @@
 from supabase import create_client
+from scraper.models import JobStatus
 
 class SupabaseClient:
     def __init__(self, url, key):
@@ -42,9 +43,7 @@ class SupabaseClient:
         try:
             city_id = self.get_city_id(city, state)
             if city_id is None:
-                # If a city_id doesn't exist in the city table, the city has not been scraped yet and thus won't exist
-                # in the status table
-                return {"status": 404, "message": f"City {city}, {state} has not been scraped yet."}
+               return JobStatus.NOT_SCRAPED
 
             response = self.fetch_data("status", filters={"city_id": city_id}, select_data="city_id, job_status")
 
@@ -53,29 +52,29 @@ class SupabaseClient:
                 # an entry in the city table. The presence of an entry in the city table guarantees an entry in the
                 # status table and vice versa.
                 print(f"City ID Found {city_id} but no entry in status table")
-                return {"status": 404, "message": f"City {city}, {state} has not been scraped yet."}
+                return JobStatus.NOT_SCRAPED
 
             job_status = response.data[0].get("job_status")
 
             if job_status == "COMPLETED":
                 # Job has previously been completed successfully
-                return {"status": 200, "message": f"Scraping job completed successfully for {city}, {state}."}
+                return JobStatus.COMPLETED
 
             elif job_status == "PENDING":
                 # Job is still in progress
-                return {"status": 409, "message": f"Scraping job is still in progress for {city}, {state}."}
+                return JobStatus.PENDING
 
             elif job_status == "ERROR":
                 # Job encountered an error previously
-                return {"status": 422, "message": f"Scraping job failed due to an error for {city}, {state}. Retry job "}
+                return JobStatus.ERROR
 
             else:
                 # Unknown status
-                return {"status": 400, "message": f"Unknown status for the scraping job for {city}, {state}."}
+                return JobStatus.UNKNOWN
 
         except Exception as e:
             print(f"Error checking status for {city}, {state}: {e}")
-            return {"status": 500, "message": f"Internal Server Error: {str(e)} for {city}, {state}."}
+            return JobStatus.INTERNAL_ERROR
 
     def get_city_id(self, city, state):
         """ Get the city_id for the specified city and state """

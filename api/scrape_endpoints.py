@@ -1,8 +1,9 @@
 """ This module contains the FastAPI endpoints for (re)/initializing jobs and status. """
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 from starlette import status
 from database.inserter import Inserter
 from scraper.scrape import scrape
+from scraper.models import JobStatus
 from api.db_init import supabase_client
 
 scrape_router = APIRouter()
@@ -16,135 +17,103 @@ scrape_router = APIRouter()
 # 4. This whole module is a mess lol 
 
 
-# Note this endpoint must be asynchronous.
-# Even though scraping and insertion are not asynchronous, the endpoint should be asynchronous, so concurrent requests
-# are handled SEQUENTIALLY. This is to prevent multiple scrapes from happening at the same time, which leads to
-# exceeding max threads allowed by Scraper API.
-# Not sure why this is the case...
 @scrape_router.get("/scrape/{city}/{state}")
-async def initialize_job(city: str, state: str, max_pages: int | None = None):
+async def handle_job(city: str, state: str, max_pages: int | None = None, rescrape: bool | None = None, response: Response = None):
     """
-        scrape/city/state?max_pages=1 or scrape/city/state
+    /scrape/{city}/{state}?max_pages={max_pages}&rescrape={rescrape}
+    /scrape/{city}/{state}?rescrape={rescrape}
+    /scrape/{city}/{state}?max_pages={max_pages}
+    /scrape/{city}/{state}
 
-        Attempts to initialize a scraping/insertion job for a city and state.
+    if rescrape is True, rescrape the data for the city and state, regardless of the current status.
+    if rescrape is False, initialize a new job ONLY IF the data does not exist OR the job encountered an error previously (JobStatus.NOT_SCRAPED or JobStatus.ERROR)
 
-        Returns 200 if a job is completed successfully
-        Returns 409 if a job is in progress
-        Returns 500 if a job cannot be initialized or completed successfully along with a specific error message
+    200: Job Was Completed Successfully (Either New Job Or Re-scrape)
+    422: Data Already Exists For City, State. Set 'rescrape' Flag To True To Update Data.
+    409: Job is in progress
+    500: Error in New Job or Re-scrape
+
     """
     try:
         city = city.upper()
         state = state.upper()
-        job_status = supabase_client.check_status(city, state)
 
-        if job_status.get('status') == 200:
-            return ({"message": f"Data is Already Available For {city}, {state}. Use /rescrape to update data."},
-                    status.HTTP_200_OK)
-
-        elif job_status.get('status') == 409:
-            return (
-                {"message": f"Scraping/Insertion is currently in progress for {city}, {state}. Use /status to check "
-                            f"status."}, status.HTTP_409_CONFLICT)
-
-        elif job_status.get('status') == 422 or job_status.get('status') == 404:
-            # A previously failed job or a job that has not been initialized yet
+        if rescrape:
             scrape_and_insert(city, state, max_pages)
             complete_status = supabase_client.check_status(city, state)
 
-            if complete_status.get('status') == 200:
-                return {"message": complete_status.get('message')}, status.HTTP_200_OK
+            if complete_status is JobStatus.COMPLETED:
+                response.status_code = status.HTTP_200_OK
+                return {"message": {complete_status.message(city, state)}}
             else:
-                return ({"message": "Error", "error": f"Error in scraping/insertion job for {city}, {state}, "
-                                                      f"{complete_status.get('message')}"},
-                        status.HTTP_500_INTERNAL_SERVER_ERROR)
+                response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+                return {"message": "Error", "error": f"Error in Re-scraping/insertion job. {complete_status.message(city, state)}"}  
 
         else:
-            return ({"message": "Error", "error": f"Error Checking Initial Job Status For {city}, {state}"},
-                    status.HTTP_500_INTERNAL_SERVER_ERROR)
+            job_status = supabase_client.check_status(city, state)
 
-    except Exception as e:
-        return {"message": "Error", "error": str(e)}, status.HTTP_500_INTERNAL_SERVER_ERROR
+            if job_status is JobStatus.NOT_SCRAPED or job_status is JobStatus.ERROR:
+                scrape_and_insert(city, state, max_pages)
+                complete_status = supabase_client.check_status(city, state)
 
+                if complete_status is JobStatus.COMPLETED:
+                    response.status_code = status.HTTP_200_OK
+                    return {"message": complete_status.message(city, state)}
+                else:
+                    response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+                    return {"message": "Error", "error": complete_status.message(city, state)}
 
-@scrape_router.get("/rescrape/{city}/{state}")
-async def rescrape_data(city: str, state: str, max_pages: int | None = None):
-    """
-    Attempts to re-scrape and update data for a city and state.
+            elif job_status is JobStatus.COMPLETED:
+                response.status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+                return {"message": f"Data is Already Available For {city}, {state}. Set 'rescrape' Flag To True To Update Data."}
 
-    Returns 200 if a job is completed successfully
-    Returns 409 if a job is in progress
-    Returns 404 if there is no initial data to update (use /scrape to initialize a new scrape job)
-    Returns 500 if a job cannot be re-initialized or completed successfully along with a specific error message
+            elif job_status is JobStatus.PENDING:
+                response.status_code = status.HTTP_409_CONFLICT
+                return {"message": job_status.message(city, state)}
 
-    """
-
-    try:
-        city = city.upper()
-        state = state.upper()
-        job_status = supabase_client.check_status(city, state)
-
-
-        if job_status.get('status') == 404:
-            return ({"message": f"Cannot Update Data For {city}, {state}. There Is No Initial Data. Use /scrape to "
-                                f"initialize a new scrape job"}, status.HTTP_404_NOT_FOUND)
-
-        elif job_status.get('status') == 409:
-            return (
-                {"message": f"Scraping/Insertion is currently in progress for {city}, {state}. Use /status to check "
-                            f"status."}, status.HTTP_409_CONFLICT)
-
-        elif job_status.get('status') == 422 or job_status.get('status') == 200:
-            # A previously failed job or a job that has been prev. been completed(data is available)
-            scrape_and_insert(city, state, max_pages)
-            complete_status = supabase_client.check_status(city, state)
-
-            if complete_status.get('status') == 200:
-                return {"message": f'{complete_status.get('message')} + (Re-scraped)'}, status.HTTP_200_OK
             else:
-                return ({"message": "Error", "error": f"Error in Re-scraping/insertion job for {city}, {state}, "
-                                                      f"{complete_status.get('message')}"},
-                        status.HTTP_500_INTERNAL_SERVER_ERROR)
+                response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+                return {"message": "Error", "error": job_status.message(city, state)}
 
-        else:
-            return ({"message": "Error", "error": f"Error Checking Initial Job Status For {city}, {state}"},
-                    status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        
     except Exception as e:
-        return {"message": "Error", "error": str(e)}, status.HTTP_500_INTERNAL_SERVER_ERROR
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Error", "error": str(e)}
 
 
 @scrape_router.get("/status/{city}/{state}")
-def check_status(city: str, state: str):
+async def check_status(city: str, state: str, response: Response = None):
     """
     Check the status of the scraping job for a city and state.
-    200: Scraping/Data Insertion has not yet been initialized
-    409: Scraping is in progress
-    204: Scraping is completed
-    499: Scraping previously failed
+    200: Job Was Completed Successfully
+    409: Job is in progress
+    404: Job Has Not Been Initialized
+    422: Job Encountered An Error
     500: Error checking status
     """
     try:
         city = city.upper()
         state = state.upper()
         job_status = supabase_client.check_status(city, state)
-        resp = job_status.get('status')
 
-        if resp == 200:
-            return ({"message": f"Scraping/Data Insertion Was Successful For {city}, {state}"},
-                    status.HTTP_200_OK)
-        elif resp == 404:
-            return ({"message": f"Scraping/Date Insertion Has NOT Been Started For {city}, {state}"},
-                    status.HTTP_409_CONFLICT)
-        elif resp == 409:
-            return {"message": f"Scraping/Data Insertion is PENDING for {city}, {state}"}, status.HTTP_204_NO_CONTENT
-        elif resp == 422:
-            return ({"message": "Error", "error": f"Scraping Failed for {city}, {state}. Please initialize a new scrape"
-                                                  f" job."}, status.HTTP_499_CLIENT_CLOSED_REQUEST)
+        if job_status is JobStatus.COMPLETED:
+            response.status_code = status.HTTP_200_OK
+            return {"message": job_status.message(city, state)}
+        elif job_status is JobStatus.NOT_SCRAPED:
+            response.status_code = status.HTTP_404_NOT_FOUND
+            return {"message": job_status.message(city, state)}
+        elif job_status is JobStatus.PENDING:
+            response.status_code = status.HTTP_409_CONFLICT
+            return {"message": job_status.message(city, state)}
+        elif job_status is JobStatus.ERROR:
+            response.status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+            return {"message": "Error", "error": job_status.message(city, state)} 
         else:
-            return ({"message": "Error", "error": f"Error checking status for {city}, {state}"},
-                    status.HTTP_500_INTERNAL_SERVER_ERROR)
+            response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            return {"message": "Error", "error": job_status.message(city, state)}
     except Exception as e:
-        return {"message": "Error", "error": str(e)}, status.HTTP_500_INTERNAL_SERVER_ERROR
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Error", "error": str(e)}
 
 
 def scrape_and_insert(city: str, state: str, max_pages: int | None = None):
@@ -152,13 +121,18 @@ def scrape_and_insert(city: str, state: str, max_pages: int | None = None):
         Job Orchestrator: Scrapes data for a city and state, and inserts it into the database.
         Temporary structure for now, can improve later.
         **Does not return anything**
-        **Any Errors Are Handled Within Scraper and Inserter, and the status is updated accordingly.**
+        **Any Errors Are Handled Within Scraper and Inserter, and the status is updated accordingly**
+        Will handle requests sequentially
 
     """
     try:
         inserter = Inserter(supabase_client)
         agents = scrape(city, state, supabase_client, max_pages)
         inserter.insert_agents(agents, city, state)
+        
+        # Switch to async database client if needed in the future for perfomance
+        # loop = asyncio.get_event_loop()
+        # await loop.run_in_executor(None, inserter.insert_agents, agents, city, state)
 
     except Exception as e:
         print(f"Error scraping and inserting data for {city}, {state}: {e}")

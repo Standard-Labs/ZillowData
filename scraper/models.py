@@ -1,4 +1,5 @@
 from pydantic import BaseModel, HttpUrl, Field
+from enum import Enum
 
 
 class Website(BaseModel):
@@ -78,7 +79,19 @@ class Agent(BaseModel):
 
 agent_types = [
     "listing-agent",
-    "buyers-agent",
-    "relocation",
-    "foreclosure"
+    # "buyers-agent",
+    # "relocation",
+    # "foreclosure"
 ]
+
+class JobStatus(Enum):
+    NOT_SCRAPED = "Scraping/Insertion Has Not Been Initialized For "
+    COMPLETED = "Scraping/Insertion Completed Successfully For "
+    PENDING = "Scraping Job Still In Progress For "
+    ERROR = "Scraping/Insertion Job Encountered An Error. Try Again For "
+    UNKNOWN = "Unknown Status For Scraping/Insertion Job For "
+    INTERNAL_ERROR = "Internal Server Error When Checking Status For "
+
+    def message(self, city, state):
+        return self.value + f"{city}, {state}" 
+
