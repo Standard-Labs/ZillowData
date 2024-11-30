@@ -13,7 +13,7 @@ scrape_router = APIRouter()
 scrape_lock = asyncio.Lock()
 
 DATABASE_URL =f"postgresql+asyncpg://{KEYS.asyncpgCredentials.user}:{KEYS.asyncpgCredentials.password}@{KEYS.asyncpgCredentials.host}:{KEYS.asyncpgCredentials.port}/{KEYS.asyncpgCredentials.database}"
-
+asyncInserter = AsyncInserter(DATABASE_URL)
 
 @scrape_router.get("/scrape/{city}/{state}")
 async def handle_job(city: str, state: str, max_pages: int | None = None, update_existing: bool | None = None, response: Response = None):
@@ -35,7 +35,6 @@ async def handle_job(city: str, state: str, max_pages: int | None = None, update
     try:
         city = city.upper()
         state = state.upper()
-        asyncInserter = AsyncInserter(DATABASE_URL)
 
         async with asyncInserter.get_session() as session:
             job_status = await asyncInserter.check_status(city, state, session)
@@ -97,8 +96,7 @@ async def check_status(city: str, state: str, response: Response = None):
         city = city.upper()
         state = state.upper()
         
-        asyncInserter = AsyncInserter(DATABASE_URL)
-        async with asyncInserter.SessionLocal() as session:
+        async with asyncInserter.get_session() as session:
             job_status = await asyncInserter.check_status(city, state, session)
 
         if job_status is JobStatus.COMPLETED:
@@ -123,17 +121,16 @@ async def check_status(city: str, state: str, response: Response = None):
 
 async def scrape_and_insert(city: str, state: str, max_pages: int | None = None, update_existing: bool | None = None):
     try:
-        asyncInserter = AsyncInserter(DATABASE_URL)
 
         await scrape_lock.acquire()  # one scrape job at a time, insertion can be async, parallel
         try:
             loop = asyncio.get_event_loop()
             with ThreadPoolExecutor() as pool:
-                agents = await loop.run_in_executor(pool, scrape, city, state, max_pages)
+                agents = await loop.run_in_executor(pool, scrape, city, state, asyncInserter, max_pages)
         finally:
             scrape_lock.release()
 
-        await asyncInserter.insert_agents(agents, city, state)
+        await asyncInserter.insert_agents(agents, city, state, update_existing)
 
     except Exception as e:
         logfire.error(f"Error in scrape_and_insert for {city}, {state}. Error: {str(e)}")

@@ -17,9 +17,6 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-# Two versions of the same endpoint, one using relationships and the other using regular joins
-# First version utilizes joinedload for forcing eager loading of the cities relationship
-# Second version uses regular joins through junction table, not taking advantage of sqlalchemy relationships
 @query_router.get("/agent/{agent_id}/cities")
 async def get_agent_cities(agent_id: str, session: AsyncSession = Depends(get_session)):
     """
@@ -35,20 +32,3 @@ async def get_agent_cities(agent_id: str, session: AsyncSession = Depends(get_se
     cities = [(city.city, city.state) for city in agent.cities]
     return cities
 
-
-# # Through using regular joins through junction table, not taking advantage of sqlalchemy relationships
-# @query_router.get("/agent/{agent_id}/cities")
-# async def get_agent_cities(agent_id: str, session: AsyncSession = Depends(get_session)):
-#     """
-#     Get a list of all cities an agent is associated with.
-#     """
-#     result = await session.execute(
-#         select(CityModel.city)  # Select only the city name from CityModel
-#         .join(AgentCityModel, AgentCityModel.city_id == CityModel.id)  # Join AgentCityModel to CityModel
-#         .join(AgentModel, AgentModel.encodedzuid == AgentCityModel.agent_id)  # Join AgentModel to AgentCityModel
-#         .where(AgentModel.encodedzuid == agent_id)  # Filter by the agent ID
-#     )
-
-#     cities = [city[0] for city in result.fetchall()]
-
-#     return cities

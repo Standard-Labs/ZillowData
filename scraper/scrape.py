@@ -8,8 +8,9 @@ from typing import List
 import requests
 from bs4 import BeautifulSoup
 import concurrent.futures
+import asyncio
 import csv
-# from database.inserter import Inserter
+from database.async_inserter import AsyncInserter
 from scraper.models import Website, Phones, Address, Listing, Agent, agent_types
 
 from keys import KEYS
@@ -268,17 +269,16 @@ def write_agents_to_csv(agents: List[Agent], file_name: str):
 
             writer.writerow(row)
 
-# TODO: Update this function to use AsyncInserter (just for status updates)
-def scrape(city, state, max_pages: int | None = None) -> List[Agent]:
+
+def scrape(city, state, async_inserter: AsyncInserter, max_pages: int | None = None) -> List[Agent]:
     """Main function to scrape data for specified city and state"""
 
     logfire.info(f"Scraping data for {city}, {state}")
 
-    # db_insert = Inserter(db_client=supabaseClient)
-    # db_insert.insert_status(city, state, "PENDING")
+    asyncio.run(insert_status(city, state, "PENDING", async_inserter))
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as page_executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as page_executor:
             futures = []
             agent_data = []
             for agent_type in agent_types:
@@ -301,7 +301,7 @@ def scrape(city, state, max_pages: int | None = None) -> List[Agent]:
 
         agent_data = remove_duplicates(agent_data)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as agent_executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as agent_executor:
             processed_agents = []
             for agent in agent_executor.map(handle_individual, agent_data):
                 if agent is not None:
@@ -311,5 +311,12 @@ def scrape(city, state, max_pages: int | None = None) -> List[Agent]:
 
     except Exception as e:
         logfire.error(f"Error scraping data for {city}, {state}: {e}")
-        # db_insert.insert_status(city, state, "ERROR")
+        asyncio.run(insert_status(city, state, "ERROR", async_inserter))
         return []
+    
+    
+async def insert_status(city: str, state: str, status: str, async_inserter: AsyncInserter):
+    async with async_inserter.get_session() as session:
+        await async_inserter.insert_status(city, state, status, session)
+
+        

@@ -392,7 +392,7 @@ class AsyncInserter:
         Edge Case: If errors happen during the insertion of the listings, the agent data is still inserted, but the listings are not.
         """
 
-        async with self.SessionLocal() as session:
+        async with self.get_session() as session:
             try:
                 logfire.info(f"Starting Insertion Process for {city}, {state}")
                 if not agents:
@@ -513,10 +513,10 @@ class AsyncInserter:
                             await self.insert_status(city, state, "ERROR", session)
                             await session.rollback()
                             continue
+                        logfire.info(f"Batch {i // batch_size + 1} Completed For {city}, {state}")
 
                 await self.insert_status(city, state, "COMPLETED", session)
                 logfire.info(f"Insertion process completed for {city}, {state}")
-                logfire.info(f"Batch {i // batch_size + 1} Completed For {city}, {state}")
             except Exception as e:
                 logfire.error(f"Error inserting agents for {city}, {state}: {e}")
                 await self.insert_status(city, state, "ERROR", session)
