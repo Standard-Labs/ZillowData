@@ -18,13 +18,6 @@ class ScraperAPIModel(BaseModel):
     api_key: str
 
 
-class SupabaseModel(BaseModel):
-    """
-    Model for Supabase credentials.
-    """
-    url: str
-    secret: str
-
 class asyncpgModel(BaseModel):
     """
     Model for asyncpg credentials.
@@ -42,5 +35,4 @@ class Keys(BaseModel):
     """
     Logfire: LogfireModel
     ScraperAPI: ScraperAPIModel
-    Supabase: SupabaseModel
     asyncpgCredentials: asyncpgModel
