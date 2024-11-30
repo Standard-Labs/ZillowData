@@ -1,25 +1,22 @@
 """ This module contains the FastAPI endpoints for (re)/initializing jobs and status. """
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Response
 import logfire
 from starlette import status
-from database.inserter import Inserter
 from scraper.scrape import scrape
 from scraper.models import JobStatus
-from api.db_init import supabase_client
+from keys import KEYS
+from database.async_inserter import AsyncInserter
 
 scrape_router = APIRouter()
+scrape_lock = asyncio.Lock()
 
-
-# Some notes
-# 1. The scrape_and_insert function is a temporary structure for now. It can be improved later.
-# 2. Future improvements to possibly either make scraping and/or insertion asynchronous if the need even arises.
-# 3. OR, more simply implement task queue like Celery to offload the scraping and insertion tasks, wouldn't make it
-# faster. but would make this module cleaner, and make dealing with this endpoint easier.
-# 4. This whole module is a mess lol 
+DATABASE_URL =f"postgresql+asyncpg://{KEYS.asyncpgCredentials.user}:{KEYS.asyncpgCredentials.password}@{KEYS.asyncpgCredentials.host}:{KEYS.asyncpgCredentials.port}/{KEYS.asyncpgCredentials.database}"
 
 
 @scrape_router.get("/scrape/{city}/{state}")
-async def handle_job(city: str, state: str, max_pages: int | None = None, rescrape: bool | None = None, response: Response = None):
+async def handle_job(city: str, state: str, max_pages: int | None = None, update_existing: bool | None = None, response: Response = None):
     """
     /scrape/{city}/{state}?max_pages={max_pages}&rescrape={rescrape}
     /scrape/{city}/{state}?rescrape={rescrape}
@@ -38,36 +35,40 @@ async def handle_job(city: str, state: str, max_pages: int | None = None, rescra
     try:
         city = city.upper()
         state = state.upper()
+        asyncInserter = AsyncInserter(DATABASE_URL)
 
-        if rescrape:
-            scrape_and_insert(city, state, max_pages)
-            complete_status = supabase_client.check_status(city, state)
+        async with asyncInserter.get_session() as session:
+            job_status = await asyncInserter.check_status(city, state, session)
+
+        if update_existing:
+            await scrape_and_insert(city, state, max_pages, update_existing)
+            async with asyncInserter.get_session() as session:
+                complete_status = await asyncInserter.check_status(city, state, session)
 
             if complete_status is JobStatus.COMPLETED:
                 response.status_code = status.HTTP_200_OK
-                return {"message": {complete_status.message(city, state)}}
+                return {"message": f"Job completed successfully for {city}, {state}"}
             else:
                 response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-                return {"message": "Error", "error": f"Error in Re-scraping/insertion job. {complete_status.message(city, state)}"}  
+                return {"message": "Error", "error": f"Error in Re-scraping/insertion job. {complete_status}"}
 
         else:
-            job_status = supabase_client.check_status(city, state)
-
             if job_status is JobStatus.NOT_SCRAPED or job_status is JobStatus.ERROR:
                 logfire.info(f"Initializing job for {city}, {state}")
-                scrape_and_insert(city, state, max_pages)
-                complete_status = supabase_client.check_status(city, state)
+                await scrape_and_insert(city, state, max_pages)
+                async with asyncInserter.get_session() as session:
+                    complete_status = await asyncInserter.check_status(city, state, session)
 
                 if complete_status is JobStatus.COMPLETED:
                     response.status_code = status.HTTP_200_OK
-                    return {"message": complete_status.message(city, state)}
+                    return {"message": f"Job completed successfully for {city}, {state}"}
                 else:
                     response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-                    return {"message": "Error", "error": complete_status.message(city, state)}
+                    return {"message": "Error", "error": f"Error in scraping/insertion job. {complete_status}"}
 
             elif job_status is JobStatus.COMPLETED:
                 response.status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
-                return {"message": f"Data is Already Available For {city}, {state}. Set 'rescrape' Flag To True To Update Data."}
+                return {"message": f"Data is Already Available For {city}, {state}. Set 'update_existing' Flag To True To Update Data."}
 
             elif job_status is JobStatus.PENDING:
                 response.status_code = status.HTTP_409_CONFLICT
@@ -77,10 +78,9 @@ async def handle_job(city: str, state: str, max_pages: int | None = None, rescra
                 response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
                 return {"message": "Error", "error": job_status.message(city, state)}
 
-        
     except Exception as e:
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        return {"message": "Error", "error": str(e)}
+        return {"message": "Error", "error": str(e)}    
 
 
 @scrape_router.get("/status/{city}/{state}")
@@ -96,7 +96,10 @@ async def check_status(city: str, state: str, response: Response = None):
     try:
         city = city.upper()
         state = state.upper()
-        job_status = supabase_client.check_status(city, state)
+        
+        asyncInserter = AsyncInserter(DATABASE_URL)
+        async with asyncInserter.SessionLocal() as session:
+            job_status = await asyncInserter.check_status(city, state, session)
 
         if job_status is JobStatus.COMPLETED:
             response.status_code = status.HTTP_200_OK
@@ -118,23 +121,19 @@ async def check_status(city: str, state: str, response: Response = None):
         return {"message": "Error", "error": str(e)}
 
 
-def scrape_and_insert(city: str, state: str, max_pages: int | None = None):
-    """
-        Job Orchestrator: Scrapes data for a city and state, and inserts it into the database.
-        Temporary structure for now, can improve later.
-        **Does not return anything**
-        **Any Errors Are Handled Within Scraper and Inserter, and the status is updated accordingly**
-        Will handle requests sequentially
-
-    """
+async def scrape_and_insert(city: str, state: str, max_pages: int | None = None, update_existing: bool | None = None):
     try:
-        inserter = Inserter(supabase_client)
-        agents = scrape(city, state, supabase_client, max_pages)
-        inserter.insert_agents(agents, city, state)
-        
-        # Switch to async database client if needed in the future for perfomance
-        # loop = asyncio.get_event_loop()
-        # await loop.run_in_executor(None, inserter.insert_agents, agents, city, state)
+        asyncInserter = AsyncInserter(DATABASE_URL)
+
+        await scrape_lock.acquire()  # one scrape job at a time, insertion can be async, parallel
+        try:
+            loop = asyncio.get_event_loop()
+            with ThreadPoolExecutor() as pool:
+                agents = await loop.run_in_executor(pool, scrape, city, state, max_pages)
+        finally:
+            scrape_lock.release()
+
+        await asyncInserter.insert_agents(agents, city, state)
 
     except Exception as e:
         logfire.error(f"Error in scrape_and_insert for {city}, {state}. Error: {str(e)}")

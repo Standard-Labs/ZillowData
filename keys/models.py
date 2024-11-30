@@ -11,7 +11,6 @@ class LogfireModel(BaseModel):
     environment: Literal["prod", "qa"]
 
 
-
 class ScraperAPIModel(BaseModel):
     """
     Model for ScraperAPI token.
@@ -26,6 +25,16 @@ class SupabaseModel(BaseModel):
     url: str
     secret: str
 
+class asyncpgModel(BaseModel):
+    """
+    Model for asyncpg credentials.
+    """
+    user: str
+    password: str
+    database: str
+    host: str
+    port: int
+
 
 class Keys(BaseModel):
     """
@@ -34,3 +43,4 @@ class Keys(BaseModel):
     Logfire: LogfireModel
     ScraperAPI: ScraperAPIModel
     Supabase: SupabaseModel
+    asyncpgCredentials: asyncpgModel

@@ -4,6 +4,7 @@ aiosignal==1.3.1
 annotated-types==0.7.0
 anyio==4.6.2.post1
 asgiref==3.8.1
+asyncpg==0.30.0
 attrs==24.2.0
 beautifulsoup4==4.12.3
 bs4==0.0.2
@@ -16,11 +17,13 @@ deprecation==2.1.0
 dnspython==2.7.0
 email_validator==2.2.0
 executing==2.1.0
+Faker==33.1.0
 fastapi==0.115.5
 fastapi-cli==0.0.5
 frozenlist==1.5.0
 googleapis-common-protos==1.66.0
 gotrue==2.11.0
+greenlet==3.1.1
 h11==0.14.0
 h2==4.1.0
 hpack==4.0.0
@@ -53,6 +56,7 @@ pluggy==1.5.0
 postgrest==0.18.0
 propcache==0.2.0
 protobuf==5.28.3
+psycopg2==2.9.10
 pydantic==2.10.2
 pydantic_core==2.27.1
 Pygments==2.18.0
@@ -68,6 +72,7 @@ shellingham==1.5.4
 six==1.16.0
 sniffio==1.3.1
 soupsieve==2.6
+SQLAlchemy==2.0.36
 starlette==0.41.3
 storage3==0.9.0
 supabase==2.10.0

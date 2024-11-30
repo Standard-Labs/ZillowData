@@ -9,7 +9,7 @@ import requests
 from bs4 import BeautifulSoup
 import concurrent.futures
 import csv
-from database.inserter import Inserter
+# from database.inserter import Inserter
 from scraper.models import Website, Phones, Address, Listing, Agent, agent_types
 
 from keys import KEYS
@@ -30,8 +30,8 @@ def retry(retries=3, delay=2, return_value=None):
                     if attempt < retries:
                         # print(f"Retrying in {delay} seconds...")
                         time.sleep(delay)
-            logfire.error(f"All {retries} attempts failed for {func.__name__}")
-            # print(f"All {retries} attempts failed for {func.__name__}")
+                    else:
+                        logfire.error(f"All {retries} attempts failed for {func.__name__} {args} {e}")
             return return_value
 
         return wrapper
@@ -268,14 +268,14 @@ def write_agents_to_csv(agents: List[Agent], file_name: str):
 
             writer.writerow(row)
 
-
-def scrape(city, state, supabaseClient, max_pages: int | None = None) -> List[Agent]:
+# TODO: Update this function to use AsyncInserter (just for status updates)
+def scrape(city, state, max_pages: int | None = None) -> List[Agent]:
     """Main function to scrape data for specified city and state"""
 
     logfire.info(f"Scraping data for {city}, {state}")
 
-    db_insert = Inserter(db_client=supabaseClient)
-    db_insert.insert_status(city, state, "PENDING")
+    # db_insert = Inserter(db_client=supabaseClient)
+    # db_insert.insert_status(city, state, "PENDING")
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as page_executor:
@@ -283,7 +283,10 @@ def scrape(city, state, supabaseClient, max_pages: int | None = None) -> List[Ag
             agent_data = []
             for agent_type in agent_types:
                 page_number = 1
-                agent_type_max_pages = max_pages or get_max_pages(city, state, agent_type)
+                if max_pages:
+                    agent_type_max_pages = max_pages
+                else:
+                    agent_type_max_pages = get_max_pages(city, state, agent_type)
 
                 while page_number <= agent_type_max_pages:
                     future = page_executor.submit(handle_page, city, state, agent_type, page_number)
@@ -307,5 +310,6 @@ def scrape(city, state, supabaseClient, max_pages: int | None = None) -> List[Ag
         return processed_agents
 
     except Exception as e:
-        db_insert.insert_status(city, state, "ERROR")
+        logfire.error(f"Error scraping data for {city}, {state}: {e}")
+        # db_insert.insert_status(city, state, "ERROR")
         return []
