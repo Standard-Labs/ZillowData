@@ -10,8 +10,11 @@ from bs4 import BeautifulSoup
 import concurrent.futures
 import asyncio
 import csv
+
+from sqlalchemy import select
 from database.async_inserter import AsyncInserter
 from scraper.models import Website, Phones, Address, Listing, Agent, agent_types_default
+from database.models import Agent as AgentModel, City as CityModel, Listing as ListingModel, AgentCity as AgentCityModel
 from config import CONFIG
 from keys import KEYS
 
@@ -316,8 +319,45 @@ def scrape(city, state, async_inserter: AsyncInserter, max_pages: int | None = N
         logfire.error(f"Error scraping data for {city}, {state}: {e}")
         asyncio.run(insert_status(city, state, "ERROR", async_inserter))
         return []
+
+
+def update_listing_data(city, state, async_inserter: AsyncInserter, agents: List[Agent]):
+    """Update listing data for agents"""
+
+    logfire.info(f"Updating ONLY listing data for {city}, {state}")
+    asyncio.run(insert_status(city, state, "PENDING", async_inserter))
+
+    try:
+        async def get_profile_links(agent_ids: List[str]) -> List[Agent]:
+            async with async_inserter.get_session() as session:
+                result = await session.execute(
+                    select(AgentModel.encodedzuid, AgentModel.profile_link).where(AgentModel.encodedzuid.in_(agent_ids))
+                )
+                return result.fetchall()
+
+        profile_links = asyncio.run(get_profile_links(agents))
+
+        all_agents = []
+        for agentID, profile_link in profile_links:
+            all_agents.append(Agent(encodedZuid=agentID, profileLink=profile_link))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as listing_executor:
+            futures = []
+            for agent in all_agents:
+                future = listing_executor.submit(handle_individual, agent)
+                futures.append(future)
+
+            concurrent.futures.wait(futures)
+            updated_agents = [future.result() for future in futures]
+
+        return updated_agents
+
+    except Exception as e:
+        logfire.error(f"Error updating listing data for {city}, {state}: {e}")
+        asyncio.run(insert_status(city, state, "ERROR", async_inserter))
+        return []    
     
-    
+
 async def insert_status(city: str, state: str, status: str, async_inserter: AsyncInserter):
     async with async_inserter.get_session() as session:
         await async_inserter.insert_status(city, state, status, session)

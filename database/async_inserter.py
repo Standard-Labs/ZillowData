@@ -277,96 +277,6 @@ class AsyncInserter:
             return []
         
 
-    async def insert_listings(self, agent: Agent,  agent_exists: bool, session: AsyncSession):
-        """
-        Batch Insert the listings data for the agent.
-        Also batch insert the junction table data for the agent-listing relationship.
-        """
-        try:
-            logfire.info(f"Inserting listings for agent: {agent.encodedzuid}")
-            listings_all_data = []
-            listing_agent_data = []
-            seen_zpids = set()
-
-            if agent_exists:
-
-                # deletes in junction table
-                await session.execute(
-                    delete(ListingAgentModel).where(ListingAgentModel.agent_id == agent.encodedzuid)
-                )
-                await session.commit()
-
-                # deletes in listing table if the listing is not in the junction table for ANY agent
-                # this is to prevent orphaned listings
-                await session.execute(
-                                delete(ListingModel).where(
-                                    ListingModel.zpid.in_(
-                                        select(ListingModel.zpid).where(
-                                            ~ListingModel.zpid.in_(
-                                                select(ListingAgentModel.listing_id)
-                                            )
-                                        )
-                                    )
-                                )
-                            )
-                
-                await session.commit()
-
-
-            for listing in agent.pastSales + agent.forRentListing + agent.forSaleListing:
-                if listing.zpid in seen_zpids:
-                    logfire.info(f"Duplicate listing found for zpid {listing.zpid}, skipping.")
-                    continue
-                seen_zpids.add(listing.zpid)
-
-                listings_all_data.append({
-                    "zpid": listing.zpid,
-                    "type": listing.type or None,
-                    "bedrooms": listing.bedrooms or None,
-                    "bathrooms": listing.bathrooms or None,
-                    "latitude": listing.latitude or None,
-                    "longitude": listing.longitude or None,
-                    "price": str(listing.price) or None,
-                    "price_currency": listing.price_currency or None,
-                    "status": listing.status or None,
-                    "home_type": listing.home_type or None,
-                    "brokerage_name": listing.brokerage_name or None,
-                    "home_marketing_status": listing.home_marketing_status or None,
-                    "home_marketing_type": listing.home_marketing_type or None,
-                    "listing_url": listing.listing_url or None,
-                    "has_open_house": listing.has_open_house or None,
-                    "represented": listing.represented or None,
-                    "sold_date": listing.sold_date or None,
-                    "home_details_url": listing.home_details_url or None,
-                    "living_area_value": listing.living_area_value or None,
-                    "living_area_units_short": listing.living_area_units_short or None,
-                    "mls_logo_src": listing.mls_logo_src or None,
-                    "line1": listing.address.line1 if listing.address else None,
-                    "line2": listing.address.line2 if listing.address else None,
-                    "state_or_province": listing.address.state_or_province if listing.address else None,
-                    "city": listing.address.city if listing.address else None,
-                    "postal_code": listing.address.postal_code if listing.address else None
-                })
-
-                listing_agent_data.append({
-                    "listing_id": listing.zpid,
-                    "agent_id": agent.encodedzuid
-                })
-
-            if listings_all_data:
-                stmt = pg_insert(ListingModel).values(listings_all_data).on_conflict_do_nothing()
-                await session.execute(stmt)
-
-                stmt = pg_insert(ListingAgentModel).values(listing_agent_data).on_conflict_do_nothing()
-                await session.execute(stmt)
-
-                logfire.info(f"Listings inserted for agent: {agent.encodedzuid}")
-
-        except Exception as e:
-            await session.rollback()
-            logfire.error(f"Error inserting listings for agent {agent.encodedzuid}: {e}")
-
-
     async def prepare_listings(self, agent: Agent, agent_exists: bool, session: AsyncSession) -> Tuple[List[dict], List[dict]]:
         """
         Prepare the listings data for the agent.
@@ -620,3 +530,64 @@ class AsyncInserter:
                 logfire.error(f"Error inserting agents for {city}, {state}: {e}")
                 await self.insert_status(city, state, "ERROR", session)
                 await session.rollback()
+
+
+    async def insert_updated_listings(self, agents: List[Agent], city: str, state: str):
+        try:
+            async with self.get_session() as session:
+                logfire.info(f"Starting Database Insertion Process for UPDATING listings for {city}, {state}")
+                
+                if not agents:
+                    logfire.error(f"No agents found for {city}, {state} (Nothing passed to the inserter initially)")
+                    await self.insert_status(city, state, "ERROR", session)
+                    return
+
+                city_id = await self.insert_city(city, state, session)
+                if not city_id:
+                    logfire.error(f"Failed to insert or find city {city}, {state}")
+                    await self.insert_status(city, state, "ERROR", session)
+                    return
+
+                listing_data = []
+                listing_agent_data = []
+
+                for agent in agents:
+                    logfire.info(f"Preparing updated listings for agent: {agent.encodedzuid}")
+                    listings_all, listing_agents = await self.prepare_listings(agent, True, session) # we shouldn't have to check if the agent exists here, since we're updating listings
+
+                    if listings_all and listing_agents:
+                        listing_data.extend(listings_all)
+                        listing_agent_data.extend(listing_agents)
+
+                if listing_data:
+                    try:
+                        logfire.info(f"Starting bulk insert for updated listings")
+                        stmt = pg_insert(ListingModel).values(listing_data).on_conflict_do_nothing()
+                        await session.execute(stmt)
+                    except Exception as e:
+                        logfire.error(f"Error executing bulk insert for listings: {e}")
+                        await self.insert_status(city, state, "ERROR", session)
+                        await session.rollback()
+                        return
+
+                if listing_agent_data:
+                    try:
+                        logfire.info(f"Starting bulk insert for updated listing-agent data")
+                        stmt = pg_insert(ListingAgentModel).values(listing_agent_data).on_conflict_do_nothing()
+                        await session.execute(stmt)
+                    except Exception as e:
+                        logfire.error(f"Error executing bulk insert for listing-agent data: {e}")
+                        await self.insert_status(city, state, "ERROR", session)
+                        await session.rollback()
+                        return
+
+                await session.commit()
+                logfire.info(f"Database Insertion Process for UPDATING listings completed for {city}, {state}")
+                await self.insert_status(city, state, "COMPLETED", session)
+
+        except Exception as e:
+            logfire.error(f"Error updating listings for {city}, {state}: {e}")
+            await self.insert_status(city, state, "ERROR", session)
+            await session.rollback()
+
+            
