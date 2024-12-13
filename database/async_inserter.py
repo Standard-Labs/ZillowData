@@ -328,14 +328,14 @@ class AsyncInserter:
                     "brokerage_name": listing.brokerage_name or None,
                     "home_marketing_status": listing.home_marketing_status or None,
                     "home_marketing_type": listing.home_marketing_type or None,
-                    "listing_url": listing.listing_url or None,
+                    "listing_url": str(listing.listing_url) or None,
                     "has_open_house": listing.has_open_house or None,
                     "represented": listing.represented or None,
                     "sold_date": listing.sold_date or None,
-                    "home_details_url": listing.home_details_url or None,
+                    "home_details_url": str(listing.home_details_url) or None,
                     "living_area_value": listing.living_area_value or None,
                     "living_area_units_short": listing.living_area_units_short or None,
-                    "mls_logo_src": listing.mls_logo_src or None,
+                    "mls_logo_src": str(listing.mls_logo_src) or None,
                     "line1": listing.address.line1 if listing.address else None,
                     "line2": listing.address.line2 if listing.address else None,
                     "state_or_province": listing.address.state_or_province if listing.address else None,
@@ -432,7 +432,6 @@ class AsyncInserter:
 
                     if agent_data:
                         try:
-                            logfire.info(f"Starting Transaction for batch {i // batch_size + 1} with {len(agent_data)} agents")
                             stmt = pg_insert(AgentModel).values(agent_data).on_conflict_do_update(
                                 index_elements=['encodedzuid'],
                                 set_={
@@ -590,4 +589,67 @@ class AsyncInserter:
             await self.insert_status(city, state, "ERROR", session)
             await session.rollback()
 
-            
+
+    async def delete_agent(self, encodedzuid: str):
+        """
+        Delete an agent record and all related records from the database.
+        """
+        async with self.get_session() as session:
+            try:
+                logfire.info(f"Deleting agent: {encodedzuid}")
+
+                await session.execute(
+                    delete(ListingAgentModel).where(ListingAgentModel.agent_id == encodedzuid)
+                )
+
+                # Deletes in listing table if the listing is not in the junction table for ANY agent
+                # This is to prevent orphaned listings
+                await session.execute(
+                    delete(ListingModel).where(
+                        ListingModel.zpid.in_(
+                            select(ListingModel.zpid).where(
+                                ~ListingModel.zpid.in_(
+                                    select(ListingAgentModel.listing_id)
+                                )
+                            )
+                        )
+                    )
+                )
+
+
+                await session.execute(
+                    delete(AgentModel).where(AgentModel.encodedzuid == encodedzuid)
+                )
+
+                await session.commit()
+                logfire.info(f"Agent {encodedzuid} and related records deleted successfully")
+
+            except Exception as e:
+                await session.rollback()
+                logfire.error(f"Error deleting agent {encodedzuid}: {e}")
+                raise
+
+
+    async def delete_listing(self, zpid: int):
+        """
+        Delete a listing record and all related records from the database.
+        """
+        async with self.get_session() as session:
+            try:
+                logfire.info(f"Deleting listing: {zpid}")
+
+                # await session.execute(
+                #     delete(ListingAgentModel).where(ListingAgentModel.listing_id == zpid)
+                # )
+
+                await session.execute(
+                    delete(ListingModel).where(ListingModel.zpid == zpid)
+                )
+
+                await session.commit()
+                logfire.info(f"Listing {zpid} and related records deleted successfully")
+
+            except Exception as e:
+                await session.rollback()
+                logfire.error(f"Error deleting listing {zpid}: {e}")
+                raise

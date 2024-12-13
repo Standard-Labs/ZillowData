@@ -119,3 +119,32 @@ async def get_listing(listing_id: int, session: AsyncSession = Depends(get_sessi
         raise HTTPException(status_code=404, detail="Listing not found")
     return listing
 
+
+@query_router.delete("/agent/{agent_id}")
+async def delete_agent(agent_id: str):
+    """
+    Delete an agent by their encodedzuid.
+    For Listings:
+        Will delete the junction table entries as well.
+        If no other agents are associated with the listing, then only a listing will be deleted.
+    """
+    try:
+        await async_inserter.delete_agent(agent_id)
+        return {"message": f"Agent {agent_id} deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting agent {agent_id}: {e}")
+    
+
+@query_router.delete("/listing/{listing_id}")
+async def delete_listing(listing_id: int):
+    """
+    Delete a listing by its Zillow ID.
+    Will delete the junction table entries as well.
+    """
+    try:
+        await async_inserter.delete_listing(listing_id)
+        return {"message": f"Listing {listing_id} deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting listing {listing_id}: {e}")
+
+    

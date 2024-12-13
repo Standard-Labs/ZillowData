@@ -176,7 +176,6 @@ async def check_status(city: str, state: str, response: Response = None):
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Error", "error": str(e)}
 
-
 async def scrape_and_insert(payload: ScrapeJobPayload, update_listings=False, agent_ids=None):
     """
     update_listings, just a flag so we only update listings, not core agent data
