@@ -1,0 +1,2 @@
+ScrapeWorkers:
+  max_workers: 20

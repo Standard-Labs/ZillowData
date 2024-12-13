@@ -1,11 +1,10 @@
 """ This module contains the FastAPI endpoints for (re)/initializing jobs and status. """
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Response
 import logfire
 from starlette import status
 from scraper.scrape import scrape
-from scraper.models import JobStatus
+from scraper.models import JobStatus, ScrapeJobPayload
 from keys import KEYS
 from database.async_inserter import AsyncInserter
 
@@ -15,14 +14,9 @@ scrape_lock = asyncio.Lock()
 DATABASE_URL =f"postgresql+asyncpg://{KEYS.asyncpgCredentials.user}:{KEYS.asyncpgCredentials.password}@{KEYS.asyncpgCredentials.host}:{KEYS.asyncpgCredentials.port}/{KEYS.asyncpgCredentials.database}"
 asyncInserter = AsyncInserter(DATABASE_URL)
 
-@scrape_router.get("/scrape/{city}/{state}")
-async def handle_job(city: str, state: str, max_pages: int | None = None, update_existing: bool | None = None, response: Response = None):
+@scrape_router.post("/scrape")
+async def handle_job(payload: ScrapeJobPayload, response: Response = None):
     """
-    /scrape/{city}/{state}?max_pages={max_pages}&rescrape={rescrape}
-    /scrape/{city}/{state}?rescrape={rescrape}
-    /scrape/{city}/{state}?max_pages={max_pages}
-    /scrape/{city}/{state}
-
     if rescrape is True, rescrape the data for the city and state, regardless of the current status.
     if rescrape is False, initialize a new job ONLY IF the data does not exist OR the job encountered an error previously (JobStatus.NOT_SCRAPED or JobStatus.ERROR)
 
@@ -33,14 +27,14 @@ async def handle_job(city: str, state: str, max_pages: int | None = None, update
 
     """
     try:
-        city = city.upper()
-        state = state.upper()
+        city = payload.city.upper()
+        state = payload.state.upper()
 
         async with asyncInserter.get_session() as session:
             job_status = await asyncInserter.check_status(city, state, session)
 
-        if update_existing:
-            await scrape_and_insert(city, state, max_pages, update_existing)
+        if payload.update_existing:
+            await scrape_and_insert(payload)
             async with asyncInserter.get_session() as session:
                 complete_status = await asyncInserter.check_status(city, state, session)
 
@@ -54,7 +48,7 @@ async def handle_job(city: str, state: str, max_pages: int | None = None, update
         else:
             if job_status is JobStatus.NOT_SCRAPED or job_status is JobStatus.ERROR:
                 logfire.info(f"Initializing job for {city}, {state}")
-                await scrape_and_insert(city, state, max_pages)
+                await scrape_and_insert(payload)
                 async with asyncInserter.get_session() as session:
                     complete_status = await asyncInserter.check_status(city, state, session)
 
@@ -119,19 +113,19 @@ async def check_status(city: str, state: str, response: Response = None):
         return {"message": "Error", "error": str(e)}
 
 
-async def scrape_and_insert(city: str, state: str, max_pages: int | None = None, update_existing: bool | None = None):
-    try:
+async def scrape_and_insert(payload: ScrapeJobPayload):
 
-        await scrape_lock.acquire()  # one scrape job at a time, insertion can be async, parallel
+    try:
+        logfire.info(f"Awaiting scrape lock for {payload.city}, {payload.state}...")
+        await scrape_lock.acquire()
+        logfire.info(f"Scrape lock acquired for {payload.city}, {payload.state}... Starting scrape")
         try:
-            loop = asyncio.get_event_loop()
-            with ThreadPoolExecutor() as pool:
-                agents = await loop.run_in_executor(pool, scrape, city, state, asyncInserter, max_pages)
+            agents = await asyncio.to_thread(scrape, payload.city, payload.state, asyncInserter, payload.max_pages, payload.agent_types)
         finally:
             scrape_lock.release()
 
-        await asyncInserter.insert_agents(agents, city, state, update_existing)
+        await asyncInserter.insert_agents(agents, payload.city, payload.state, payload.update_existing)
 
     except Exception as e:
-        logfire.error(f"Error in scrape_and_insert for {city}, {state}. Error: {str(e)}")
+        logfire.error(f"Error in scrape_and_insert for {payload.city}, {payload.state}. Error: {str(e)}")
 

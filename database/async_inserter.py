@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from typing import List
+from typing import List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import delete, func, select
@@ -12,7 +12,7 @@ import uuid
 
 
 class AsyncInserter:
-
+    
     def __init__(self, db_url: str):
         logfire.info("Initializing AsyncInserter")
         self.engine = create_async_engine(
@@ -33,6 +33,7 @@ class AsyncInserter:
         )
         logfire.info("AsyncInserter initialized")
 
+
     @asynccontextmanager
     async def get_session(self):
         async with self.SessionLocal() as session:
@@ -43,6 +44,7 @@ class AsyncInserter:
                 raise
             finally:
                 await session.close()
+
 
     async def check_status(self, city: str, state: str, session: AsyncSession) -> str:
         """
@@ -75,6 +77,7 @@ class AsyncInserter:
             logfire.error(f"Error checking status for city: {city}, state: {state}: {e}")
             return "NOT_SCRAPED"
 
+
     async def insert_city(self, city: str, state: str, session: AsyncSession) -> int | None:
         """
         Insert the city into the City Table if it does not exist, else return the city.
@@ -105,6 +108,7 @@ class AsyncInserter:
             await session.rollback()
             return None
 
+
     async def insert_status(self, city: str, state: str, status: str, session: AsyncSession) -> None:
         """
         Insert the status of the job for the specified city and state.
@@ -126,64 +130,21 @@ class AsyncInserter:
             await session.rollback()
             logfire.error(f"Error inserting status for {city}, {state}: {e}")
 
+
     def prepare_agent_city(self, agent: Agent, city_id: str) -> dict:
         """Prepare the agent-city junction table data."""
         logfire.info(f"Preparing agent-city data for agent: {agent.encodedzuid}, city ID: {city_id}")
         return {"agent_id": agent.encodedzuid, "city_id": city_id}
 
-    async def prepare_individual_agent(self, agent: Agent, city: str, state: str, session: AsyncSession) -> dict | None:
+
+    async def prepare_individual_agent(self, agent: Agent, city: str, state: str, session: AsyncSession, agentExists: bool) -> dict | None:
         """
         Prepare the agent data to be inserted into the database.
-        Returns the AgentModel object if the agent does not exist in the database, else returns None.
-        If the agent exists, the agent data is updated (specialties are appended, page and ranking are updated).
+        If the agent already exists, update the specialties, page, and ranking.
+        Return the prepared agent data.
         """
         try:
-            logfire.info(f"Preparing individual agent data for agent: {agent.encodedzuid}")
-            result = await session.execute(
-                select(AgentModel.ranking, AgentModel.page, AgentModel.specialties).where(AgentModel.encodedzuid == agent.encodedzuid)
-            )
-            og_agent_data = result.fetchone()
-
-            if og_agent_data:
-                og_ranking, og_page, og_specialties = og_agent_data
-
-                new_page = None
-                new_ranking = None
-
-                if agent.page is not None:
-                    new_page = min(agent.page, og_page if og_page is not None else agent.page)
-                    if new_page == og_page:
-                        new_ranking = og_ranking if og_ranking is not None else agent.ranking
-                    else:
-                        new_ranking = agent.ranking
-                else:
-                    new_page = og_page
-                    new_ranking = og_ranking
-
-                updated_specialties = list(set(agent.specialties + og_specialties if og_specialties is not None else agent.specialties))
-
-                agent_data = {
-                    "encodedzuid": agent.encodedzuid,
-                    "business_name": agent.business_name,
-                    "full_name": agent.full_name,
-                    "location": agent.location,
-                    "profile_link": agent.profile_link,
-                    "sale_count_all_time": agent.sale_count_all_time,
-                    "sale_count_last_year": agent.sale_count_last_year,
-                    "sale_price_range_three_year_min": agent.sale_price_three_year_min,
-                    "sale_price_range_three_year_max": agent.sale_price_three_year_max,
-                    "is_team_lead": agent.is_team_lead,
-                    "is_top_agent": agent.is_top_agent,
-                    "email": agent.email,
-                    "ranking": new_ranking,
-                    "page": new_page,
-                    "specialties": updated_specialties
-                }
-                logfire.info(f"Prepared updated agent data for agent: {agent.encodedzuid}")
-                return agent_data
-
-            else:
-                agent_data = {
+            agent_data = {
                     "encodedzuid": agent.encodedzuid,
                     "business_name": agent.business_name,
                     "full_name": agent.full_name,
@@ -200,12 +161,51 @@ class AsyncInserter:
                     "page": agent.page,
                     "specialties": agent.specialties
                 }
+            
+            logfire.info(f"Preparing individual agent data for agent: {agent.encodedzuid}")
+
+
+            if agentExists:
+                result = await session.execute(
+                    select(AgentModel.ranking, AgentModel.page, AgentModel.specialties).where(AgentModel.encodedzuid == agent.encodedzuid)
+                )
+                og_agent_data = result.fetchone()
+
+                if og_agent_data:
+                    og_ranking, og_page, og_specialties = og_agent_data
+
+                    new_page = None
+                    new_ranking = None
+
+                    if agent.page is not None:
+                        new_page = min(agent.page, og_page if og_page is not None else agent.page)
+                        if new_page == og_page:
+                            new_ranking = og_ranking if og_ranking is not None else agent.ranking
+                        else:
+                            new_ranking = agent.ranking
+                    else:
+                        new_page = og_page
+                        new_ranking = og_ranking
+
+                    updated_specialties = list(set(agent.specialties + og_specialties if og_specialties is not None else agent.specialties))
+
+                    agent_data['ranking'] = new_ranking
+                    agent_data['page'] = new_page
+                    agent_data['specialties'] = updated_specialties
+                else:
+                    logfire.error(f"Error fetching original agent data for agent {agent.encodedzuid}")
+                    return agent_data # return the agent data as is, since we couldn't fetch the original data
+
+                logfire.info(f"Prepared updated agent data for agent: {agent.encodedzuid}")
+                return agent_data
+
+            else:
                 logfire.info(f"Prepared new agent data for agent: {agent.encodedzuid}")
                 return agent_data
         except Exception as e:
             logfire.error(f"Error preparing individual agent data for agent {agent.encodedzuid}: {e}")
-            await session.rollback()
             return None
+
 
     async def prepare_phones(self, agent: Agent, agent_exists: bool, session: AsyncSession) -> List[dict]:
         try:
@@ -245,8 +245,8 @@ class AsyncInserter:
 
         except Exception as e:
             logfire.error(f"Error preparing phone data for agent {agent.encodedzuid}: {e}")
-            await session.rollback()
             return []
+
 
     async def prepare_websites(self, agent: Agent, agent_exists: bool, session: AsyncSession) -> List[dict]:
         try:
@@ -274,9 +274,9 @@ class AsyncInserter:
             return websites
         except Exception as e:
             logfire.error(f"Error preparing website data for agent {agent.encodedzuid}: {e}")
-            await session.rollback()
             return []
         
+
     async def insert_listings(self, agent: Agent,  agent_exists: bool, session: AsyncSession):
         """
         Batch Insert the listings data for the agent.
@@ -366,10 +366,89 @@ class AsyncInserter:
             await session.rollback()
             logfire.error(f"Error inserting listings for agent {agent.encodedzuid}: {e}")
 
+
+    async def prepare_listings(self, agent: Agent, agent_exists: bool, session: AsyncSession) -> Tuple[List[dict], List[dict]]:
+        """
+        Prepare the listings data for the agent.
+        Also prepare the junction table data for the agent-listing relationship.
+        """
+        try:
+            logfire.info(f"Preparing listings for agent: {agent.encodedzuid}")
+            listings_all_data = []
+            listing_agent_data = []
+            seen_zpids = set()
+
+            if agent_exists:
+                # Deletes in junction table
+                await session.execute(
+                    delete(ListingAgentModel).where(ListingAgentModel.agent_id == agent.encodedzuid)
+                )
+
+                # Deletes in listing table if the listing is not in the junction table for ANY agent
+                # This is to prevent orphaned listings
+                await session.execute(
+                    delete(ListingModel).where(
+                        ListingModel.zpid.in_(
+                            select(ListingModel.zpid).where(
+                                ~ListingModel.zpid.in_(
+                                    select(ListingAgentModel.listing_id)
+                                )
+                            )
+                        )
+                    )
+                )
+
+            for listing in agent.pastSales + agent.forRentListing + agent.forSaleListing:
+                if listing.zpid in seen_zpids:
+                    logfire.info(f"Duplicate listing found for zpid {listing.zpid}, skipping.")
+                    continue
+                seen_zpids.add(listing.zpid)
+
+                listings_all_data.append({
+                    "zpid": listing.zpid,
+                    "type": listing.type or None,
+                    "bedrooms": listing.bedrooms or None,
+                    "bathrooms": listing.bathrooms or None,
+                    "latitude": listing.latitude or None,
+                    "longitude": listing.longitude or None,
+                    "price": str(listing.price) or None,
+                    "price_currency": listing.price_currency or None,
+                    "status": listing.status or None,
+                    "home_type": listing.home_type or None,
+                    "brokerage_name": listing.brokerage_name or None,
+                    "home_marketing_status": listing.home_marketing_status or None,
+                    "home_marketing_type": listing.home_marketing_type or None,
+                    "listing_url": listing.listing_url or None,
+                    "has_open_house": listing.has_open_house or None,
+                    "represented": listing.represented or None,
+                    "sold_date": listing.sold_date or None,
+                    "home_details_url": listing.home_details_url or None,
+                    "living_area_value": listing.living_area_value or None,
+                    "living_area_units_short": listing.living_area_units_short or None,
+                    "mls_logo_src": listing.mls_logo_src or None,
+                    "line1": listing.address.line1 if listing.address else None,
+                    "line2": listing.address.line2 if listing.address else None,
+                    "state_or_province": listing.address.state_or_province if listing.address else None,
+                    "city": listing.address.city if listing.address else None,
+                    "postal_code": listing.address.postal_code if listing.address else None
+                })
+
+                listing_agent_data.append({
+                    "listing_id": listing.zpid,
+                    "agent_id": agent.encodedzuid
+                })
+
+            logfire.info(f"Prepared listings for agent: {agent.encodedzuid}")
+            return listings_all_data, listing_agent_data
+
+        except Exception as e:
+            logfire.error(f"Error preparing listings for agent {agent.encodedzuid}: {e}")
+            return [], []
+
+
     async def agent_exists(self, agent: Agent, session: AsyncSession) -> bool:
         """Check if the agent already exists in the database."""
         try:
-            logfire.info(f"Checking if agent exists: {agent.encodedzuid}")
             result = await session.execute(
                 select(AgentModel.encodedzuid).where(AgentModel.encodedzuid == agent.encodedzuid)
             )
@@ -377,6 +456,7 @@ class AsyncInserter:
         except Exception as e:
             logfire.error(f"Error checking if agent exists: {e}")
             return
+
 
     async def insert_agents(self, agents: List[Agent], city: str, state: str, update_existing: bool = False):
         """ 
@@ -386,55 +466,63 @@ class AsyncInserter:
           updating the page and ranking. Deletes the old phone, website, and listing data. All of this is done in the prepare methods. The core
             data is updated here.
 
-        If update_existing is False, the agent data is skipped if it already exists in the database, else it is inserted as new data.
+        If update_existing is False, the agent data is skipped if it already exists in the database, else it is upserted. This includes updating listings, phones, and websites.
         
-        If any errors happen during a batch, the batch is rolled back and the process continues with the next batch.
-        Edge Case: If errors happen during the insertion of the listings, the agent data is still inserted, but the listings are not.
+        If any errors happen during a batch, the entire batch is rolled back and the process continues with the next batch.
         """
 
         async with self.get_session() as session:
             try:
-                logfire.info(f"Starting Insertion Process for {city}, {state}")
+                logfire.info(f"Starting Database Insertion Process for {city}, {state}")
                 if not agents:
-                    logfire.error(f"No agents found for {city}, {state}")
+                    logfire.error(f"No agents found for {city}, {state} (Nothing passed to the inserter initially)")
                     await self.insert_status(city, state, "ERROR", session)
+                    await session.rollback()
                     return
 
                 city_id = await self.insert_city(city, state, session)
                 if not city_id:
                     logfire.error(f"Failed to insert or find city {city}, {state}")
                     await self.insert_status(city, state, "ERROR", session)
+                    await session.rollback()
                     return
 
                 batch_size = 300
                 for i in range(0, len(agents), batch_size):
                     batch_agents = agents[i:i + batch_size]
-                    logfire.info(f"Processing batch {i // batch_size + 1} with {len(batch_agents)} agents")
+                    logfire.info(f"Starting batch {i // batch_size + 1} with {len(batch_agents)} agents for {city}, {state}")
 
                     agent_data = []
                     agent_city_data = []
                     phones_data = []
                     websites_data = []
+                    listing_data = []
+                    listing_agent_data = []
 
                     for agent in batch_agents:
                         agent_exists = await self.agent_exists(agent, session)
                         if not update_existing and agent_exists:
                             logfire.info(f"Agent already exists in the database, skipping (update_existing Was False): {agent.encodedzuid}")
-                            agent_city_data.append(self.prepare_agent_city(agent, city_id))
+                            agent_city_data.append(self.prepare_agent_city(agent, city_id)) # still update the agent-city junction table
                             continue
                         else:
                             logfire.info(f"Preparing data for agent: {agent.encodedzuid}")
-                            a_data = await self.prepare_individual_agent(agent, city, state, session)
-                            if a_data:
-                                agent_data.append(a_data)
-                            agent_city_data.append(self.prepare_agent_city(agent, city_id))
-                            phones_data.extend(await self.prepare_phones(agent, agent_exists, session))
-                            websites_data.extend(await self.prepare_websites(agent, agent_exists, session))
+                            main_agent_data = await self.prepare_individual_agent(agent, city, state, session, agent_exists)
+                            if main_agent_data:
+                                agent_data.append(main_agent_data)
+                                agent_city_data.append(self.prepare_agent_city(agent, city_id))
+                                phones_data.extend(await self.prepare_phones(agent, agent_exists, session))
+                                websites_data.extend(await self.prepare_websites(agent, agent_exists, session))
+                                listings_all, listing_agents = await self.prepare_listings(agent, agent_exists, session)
+                                listing_data.extend(listings_all)
+                                listing_agent_data.extend(listing_agents)
+                            else:
+                                logfire.error(f"Error preparing data for agent: {agent.encodedzuid}")
+                                continue
 
-                    # from this point, we're guaranteed that the agent data is either new or we're updating it
                     if agent_data:
                         try:
-                            logfire.info(f"Inserting batch {i // batch_size + 1} with {len(agent_data)} agents")
+                            logfire.info(f"Starting Transaction for batch {i // batch_size + 1} with {len(agent_data)} agents")
                             stmt = pg_insert(AgentModel).values(agent_data).on_conflict_do_update(
                                 index_elements=['encodedzuid'],
                                 set_={
@@ -457,63 +545,74 @@ class AsyncInserter:
                             await session.execute(stmt)
 
                         except Exception as batch_error:
-                            logfire.error(f"Error inserting batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
+                            logfire.error(f"Error executing Agent Table insertion for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
                             await self.insert_status(city, state, "ERROR", session)
                             await session.rollback()
                             continue
 
                         if agent_city_data:
                             try:
-                                logfire.info(f"Inserting agent-city data for batch {i // batch_size + 1}")
+                                logfire.info(f"Start executing for agent-city data for batch {i // batch_size + 1}")
                                 stmt = pg_insert(AgentCityModel).values(agent_city_data).on_conflict_do_nothing()
                                 await session.execute(stmt)
 
                             except Exception as batch_error:
-                                logfire.error(f"Error inserting agent-city data for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
+                                logfire.error(f"Error executing agent-city data for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
                                 await self.insert_status(city, state, "ERROR", session)
                                 await session.rollback()
                                 continue
 
                         if phones_data:
                             try:
-                                # new phones (if any) will be accounted for in the prepare_phones method, old phones will be discarded
-                                logfire.info(f"Inserting phone data for batch {i // batch_size + 1}")
+                                logfire.info(f"Starting executing phone data for batch {i // batch_size + 1}")
                                 stmt = pg_insert(PhoneModel).values(phones_data).on_conflict_do_nothing()
                                 await session.execute(stmt)
                             except Exception as batch_error:
-                                logfire.error(f"Error inserting phone data for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
+                                logfire.error(f"Error executing phone data for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
                                 await self.insert_status(city, state, "ERROR", session)
                                 await session.rollback()
                                 continue
 
                         if websites_data:
                             try:
-                                # new websites (if any) will be accounted for in the prepare_websites method, old websites will be discarded
-                                logfire.info(f"Inserting website data for batch {i // batch_size + 1}")
+                                logfire.info(f"Starting executing website data for batch {i // batch_size + 1}")
                                 stmt = pg_insert(WebsiteModel).values(websites_data).on_conflict_do_nothing()
                                 await session.execute(stmt)
                             except Exception as batch_error:
-                                logfire.error(f"Error inserting website data for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
+                                logfire.error(f"Error executing website data for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
                                 await self.insert_status(city, state, "ERROR", session)
                                 await session.rollback()
                                 continue
 
-                        # commit before inserting listings
+                        if listing_data:
+                            try:
+                                logfire.info(f"Starting executing listing data for batch {i // batch_size + 1}")
+                                stmt = pg_insert(ListingModel).values(listing_data).on_conflict_do_nothing()
+                                await session.execute(stmt)
+                            except Exception as batch_error:
+                                logfire.error(f"Error executing listing data for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
+                                await self.insert_status(city, state, "ERROR", session)
+                                await session.rollback()
+                                continue
+                        
+                        if listing_agent_data:
+                            try:
+                                logfire.info(f"Starting executing listing-agent data for batch {i // batch_size + 1}")
+                                stmt = pg_insert(ListingAgentModel).values(listing_agent_data).on_conflict_do_nothing()
+                                await session.execute(stmt)
+                            except Exception as batch_error:
+                                logfire.error(f"Error executing listing-agent data for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
+                                await self.insert_status(city, state, "ERROR", session)
+                                await session.rollback()
+                                continue
+                     
                         await session.commit()
-                        logfire.info(f"Batch {i // batch_size + 1} committed")
-
-                        # Batch insert listings for EACH agent
-                        # new listings (if any) will be accounted for in the insert_listings method, old listings will be discarded
-                        logfire.info(f"Inserting listing data for batch {i // batch_size + 1}")
-                        try:
-                            for agent in batch_agents:
-                                await self.insert_listings(agent, agent_exists, session)
-                        except Exception as batch_error:
-                            logfire.error(f"Error inserting listings for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
-                            await self.insert_status(city, state, "ERROR", session)
-                            await session.rollback()
-                            continue
                         logfire.info(f"Batch {i // batch_size + 1} Completed For {city}, {state}")
+
+                    else:
+                        logfire.error(f"No agent data found for batch {i // batch_size + 1} for {city}, {state}")
+                        await self.insert_status(city, state, "ERROR", session)
+                        continue
 
                 await self.insert_status(city, state, "COMPLETED", session)
                 logfire.info(f"Insertion process completed for {city}, {state}")

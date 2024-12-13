@@ -11,11 +11,12 @@ import concurrent.futures
 import asyncio
 import csv
 from database.async_inserter import AsyncInserter
-from scraper.models import Website, Phones, Address, Listing, Agent, agent_types
-
+from scraper.models import Website, Phones, Address, Listing, Agent, agent_types_default
+from config import CONFIG
 from keys import KEYS
 
 API_KEY = KEYS.ScraperAPI.api_key
+MAX_WORKERS = CONFIG.ScrapeWorkers.max_workers
 
 def retry(retries=3, delay=2, return_value=None):
     """Retry decorator"""
@@ -66,13 +67,13 @@ def extract_agents(parsed_data: dict, agent_type: str, page_number: int) -> List
 
 
 def remove_duplicates(agents: List[Agent]) -> List[Agent]:
-    """Remove duplicate agents based on fullName"""
+    """Remove duplicate agents based on unique encodedzuid"""
     seen = set()
     unique_agents = []
     for agent in agents:
-        if agent.full_name not in seen:
+        if agent.encodedzuid not in seen:
             unique_agents.append(agent)
-            seen.add(agent.full_name)
+            seen.add(agent.encodedzuid)
     return unique_agents
 
 
@@ -270,15 +271,17 @@ def write_agents_to_csv(agents: List[Agent], file_name: str):
             writer.writerow(row)
 
 
-def scrape(city, state, async_inserter: AsyncInserter, max_pages: int | None = None) -> List[Agent]:
+def scrape(city, state, async_inserter: AsyncInserter, max_pages: int | None = None, agent_types: list[str] | None = None) -> List[Agent]:
     """Main function to scrape data for specified city and state"""
 
-    logfire.info(f"Scraping data for {city}, {state}")
+    logfire.info(f"Scraping data for {city}, {state} with max pages: {max_pages} and agent types: {agent_types}")
 
     asyncio.run(insert_status(city, state, "PENDING", async_inserter))
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as page_executor:
+        agent_types = agent_types if agent_types is not None else agent_types_default
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as page_executor:
             futures = []
             agent_data = []
             for agent_type in agent_types:
@@ -301,7 +304,7 @@ def scrape(city, state, async_inserter: AsyncInserter, max_pages: int | None = N
 
         agent_data = remove_duplicates(agent_data)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as agent_executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as agent_executor:
             processed_agents = []
             for agent in agent_executor.map(handle_individual, agent_data):
                 if agent is not None:

@@ -1,15 +1,11 @@
 """Models for the keys."""
 from pydantic import BaseModel
 
-
-class GeneralConfig(BaseModel):
-    """
-    Model for general configuration.
-    """
-
+class ScrapeWorkers(BaseModel):
+    max_workers: int
 
 class Config(BaseModel):
     """
     Model for all configuration.
     """
-    General: GeneralConfig
+    ScrapeWorkers: ScrapeWorkers

@@ -77,7 +77,7 @@ class Agent(BaseModel):
     page: int | None = None
 
 
-agent_types = [
+agent_types_default = [
     "listing-agent",
     "buyers-agent",
     "relocation",
@@ -95,3 +95,9 @@ class JobStatus(Enum):
     def message(self, city, state):
         return self.value + f"{city}, {state}" 
 
+class ScrapeJobPayload(BaseModel):
+    max_pages: int | None = None
+    update_existing: bool | None = False
+    city: str
+    state: str
+    agent_types: list[str] | None = Field(default_factory=lambda: ["listing-agent", "buyers-agent", "relocation", "foreclosure"])

@@ -38,7 +38,6 @@ app.include_router(scrape_endpoints.scrape_router)
 app.include_router(query_endpoints.query_router)
 
 
-
 @app.get("/", tags=["Root"])
 async def root() -> dict[str, str]:
     """Root endpoint."""
