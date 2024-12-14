@@ -1,16 +1,14 @@
 """ This module contains the FastAPI endpoints for querying the database. """
+from typing import AsyncGenerator
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 from database.models import Agent as AgentModel, City as CityModel, Listing as ListingModel, AgentCity as AgentCityModel
-from database.async_inserter import AsyncInserter
-from typing import AsyncGenerator
-from keys import KEYS
+from api.async_inserter import async_inserter
 
-DATABASE_URL = f"postgresql+asyncpg://{KEYS.asyncpgCredentials.user}:{KEYS.asyncpgCredentials.password}@{KEYS.asyncpgCredentials.host}:{KEYS.asyncpgCredentials.port}/{KEYS.asyncpgCredentials.database}"
+
 query_router = APIRouter()
-async_inserter = AsyncInserter(DATABASE_URL)
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_inserter.get_session() as session:

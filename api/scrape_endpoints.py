@@ -6,15 +6,15 @@ from starlette import status
 from scraper.scrape import scrape, update_listing_data
 from scraper.models import JobStatus, ScrapeJobPayload
 from database.models import Agent as AgentModel, City as CityModel, AgentCity as AgentCityModel
-from keys import KEYS
 from sqlalchemy.future import select
 from database.async_inserter import AsyncInserter
+from api.async_inserter import async_inserter as asyncInserter
 
 scrape_router = APIRouter()
 scrape_lock = asyncio.Lock()
 
-DATABASE_URL =f"postgresql+asyncpg://{KEYS.asyncpgCredentials.user}:{KEYS.asyncpgCredentials.password}@{KEYS.asyncpgCredentials.host}:{KEYS.asyncpgCredentials.port}/{KEYS.asyncpgCredentials.database}"
-asyncInserter = AsyncInserter(DATABASE_URL)
+def get_async_inserter() -> AsyncInserter:
+    return asyncInserter
 
 @scrape_router.post("/scrape")
 async def handle_job(payload: ScrapeJobPayload, response: Response = None):

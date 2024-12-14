@@ -42,8 +42,8 @@ async def db_session(async_inserter: AsyncInserter) -> AsyncGenerator[AsyncSessi
     async with async_inserter.get_session() as session:
         yield session
 
-@pytest.fixture(scope="function")
-def client() -> TestClient:
+@pytest_asyncio.fixture(scope="function")
+async def client() -> AsyncGenerator[AsyncSession, None]:
     with TestClient(app) as c:
         yield c
 
