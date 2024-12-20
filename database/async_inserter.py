@@ -398,7 +398,7 @@ class AsyncInserter:
                     await session.rollback()
                     return
 
-                batch_size = 300
+                batch_size = 250
                 for i in range(0, len(agents), batch_size):
                     batch_agents = agents[i:i + batch_size]
                     logfire.info(f"Starting batch {i // batch_size + 1} with {len(batch_agents)} agents for {city}, {state}")

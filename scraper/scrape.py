@@ -1,5 +1,6 @@
 import json
 import math
+import random
 import time
 from functools import wraps
 import logfire
@@ -13,7 +14,7 @@ import csv
 
 from sqlalchemy import select
 from database.async_inserter import AsyncInserter
-from scraper.models import Website, Phones, Address, Listing, Agent, agent_types_default
+from scraper.models import Website, Phones, Address, Listing, Agent, agent_types_default, USER_AGENTS
 from database.models import Agent as AgentModel, City as CityModel, Listing as ListingModel, AgentCity as AgentCityModel
 from config import CONFIG
 from keys import KEYS
@@ -36,7 +37,7 @@ def retry(retries=3, delay=2, return_value=None):
                         # print(f"Retrying in {delay} seconds...")
                         time.sleep(delay)
                     else:
-                        logfire.error(f"All {retries} attempts failed for {func.__name__} {args} {e}")
+                        logfire.error(f"MAJOR ERROR: ALL {retries} attempts failed for {func.__name__} {args} {e}")
             return return_value
 
         return wrapper
@@ -44,9 +45,14 @@ def retry(retries=3, delay=2, return_value=None):
     return decorator
 
 
+# Random User-Agent for each request for now, waiting for ScraperAPI to get back about
+# the user-agent issues
 def fetch_agent_data(url: str, payload: dict) -> str:
     """Fetch agent data using ScraperAPI"""
-    response = requests.get('https://api.scraperapi.com/', params=payload)
+    user_agent = random.choice(USER_AGENTS)
+    headers={'user-agent': user_agent}
+    payload['keep-headers'] = 'true'
+    response = requests.get('https://api.scraperapi.com/', params=payload, headers=headers)
     return response.text
 
 
