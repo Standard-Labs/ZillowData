@@ -31,7 +31,7 @@ def retry(retries=3, delay=2, return_value=None):
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
-                    # print(f"Attempt {attempt} failed: {e}")
+                    logfire.error(f"Error in {func.__name__} {args} {e}")
                     if attempt < retries:
                         # print(f"Retrying in {delay} seconds...")
                         time.sleep(delay)
@@ -216,6 +216,8 @@ def handle_individual(agent: Agent) -> Agent:
 @retry(retries=3, delay=2)
 def handle_page(city_name, state, agent_type, page_number) -> List[Agent]:
     """Initial scrape for agents on a page"""
+
+    logfire.info(f"Initial Scrape for Page {page_number}  Agent Type: {agent_type}")
     url = f'https://www.zillow.com/professionals/real-estate-agent-reviews/{city_name}-{state.lower()}/?specialties={agent_type}&page={page_number}'
     payload = {'api_key': API_KEY, 'url': url}
     response_text = fetch_agent_data(url, payload)
@@ -223,8 +225,6 @@ def handle_page(city_name, state, agent_type, page_number) -> List[Agent]:
     script_tag = soup.find("script", id="__NEXT_DATA__")
 
     if script_tag:
-        # print(f"Initial Scrape for Page {page_number}  Agent Type: {agent_type}")
-        logfire.info(f"Initial Scrape for Page {page_number}  Agent Type: {agent_type}")
         parsed_data = parse_json_data(script_tag)
         agents = extract_agents(parsed_data, agent_type, page_number)
         return agents
@@ -274,10 +274,10 @@ def write_agents_to_csv(agents: List[Agent], file_name: str):
             writer.writerow(row)
 
 
-def scrape(city, state, async_inserter: AsyncInserter, max_pages: int | None = None, agent_types: list[str] | None = None) -> List[Agent]:
+def scrape(city, state, async_inserter: AsyncInserter, page_start: int | None = None, page_end: int | None = None, agent_types: list[str] | None = None) -> List[Agent]:
     """Main function to scrape data for specified city and state"""
 
-    logfire.info(f"Scraping data for {city}, {state} with max pages: {max_pages} and agent types: {agent_types}")
+    logfire.info(f"Scraping data for {city}, {state} for pages {page_start} to {page_end} and agent types: {agent_types}")
 
     asyncio.run(insert_status(city, state, "PENDING", async_inserter))
 
@@ -288,16 +288,13 @@ def scrape(city, state, async_inserter: AsyncInserter, max_pages: int | None = N
             futures = []
             agent_data = []
             for agent_type in agent_types:
-                page_number = 1
-                if max_pages:
-                    agent_type_max_pages = max_pages
-                else:
-                    agent_type_max_pages = get_max_pages(city, state, agent_type)
+                start = page_start if page_start is not None else 1
+                agent_type_max_pages = get_max_pages(city, state, agent_type)
+                end = page_end if page_end is not None else agent_type_max_pages
 
-                while page_number <= agent_type_max_pages:
+                for page_number in range(start, end + 1):
                     future = page_executor.submit(handle_page, city, state, agent_type, page_number)
                     futures.append(future)
-                    page_number += 1
 
             concurrent.futures.wait(futures)
             for future in futures:
@@ -310,13 +307,13 @@ def scrape(city, state, async_inserter: AsyncInserter, max_pages: int | None = N
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as agent_executor:
             processed_agents = []
             for agent in agent_executor.map(handle_individual, agent_data):
-                if agent is not None:
-                    processed_agents.append(agent)
+                processed_agents.append(agent)
 
+        asyncio.run(insert_status(city, state, "COMPLETED", async_inserter))
         return processed_agents
 
     except Exception as e:
-        logfire.error(f"Error scraping data for {city}, {state}: {e}")
+        logfire.error(f"Error scraping data for {city}, {state}: {str(e)}")
         asyncio.run(insert_status(city, state, "ERROR", async_inserter))
         return []
 

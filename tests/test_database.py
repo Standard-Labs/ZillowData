@@ -19,7 +19,7 @@ async def test_insert_and_query_agent(db_session: AsyncSession, client: TestClie
     assert response.status_code == 200
     assert response.json()["encodedzuid"] == get_agent_model.encodedzuid
     
-    response = client.get(f"/agentIDs/by_city_state/TEST CITY/TEST STATE")
+    response = client.get(f"/agentIDs/TEST CITY/TEST STATE")
     assert response.status_code == 200
     assert get_agent_model.encodedzuid in response.json()
 
@@ -191,3 +191,60 @@ async def test_insert_and_query_agent_update_existing(db_session: AsyncSession, 
         delete_response = client.delete(f"/agent/{get_agent_model.encodedzuid}")
         assert delete_response.status_code == 200
     
+
+# Test to ensure that the delete_city endpoint deletes all data associated with the city
+@pytest.mark.asyncio
+async def test_delete_city(db_session: AsyncSession, client: TestClient, async_inserter: AsyncInserter, get_agent_model:Agent, get_agent_model2: Agent):
+     
+    # to ensure that we have a clean slate in case something goes wrong prior 
+    delete_response = client.delete(f"/agent/{get_agent_model.encodedzuid}")
+    delete_response = client.delete(f"/agent/{get_agent_model2.encodedzuid}")
+    
+    await async_inserter.insert_agents([get_agent_model, get_agent_model2], "TEST CITY", "TEST STATE")
+
+    response = client.get(f"/agent/{get_agent_model.encodedzuid}")
+    assert response.status_code == 200
+
+    response = client.get(f"/agent/{get_agent_model2.encodedzuid}")
+    assert response.status_code == 200
+
+    response = client.get(f"/agentIDs/TEST CITY/TEST STATE")
+    assert response.status_code == 200
+    assert get_agent_model.encodedzuid in response.json()
+    assert get_agent_model2.encodedzuid in response.json()
+
+    response = client.get(f"/listing/1001")
+    assert response.status_code == 200
+
+    response = client.get(f"/listing/1002")
+    assert response.status_code == 200
+
+    response = client.get(f"/listing/2001")
+    assert response.status_code == 200
+
+    response = client.get(f"/listing/2002")
+    assert response.status_code == 200
+
+    response = client.delete(f"/city/state/TEST CITY/TEST STATE")
+    assert response.status_code == 200
+
+    response = client.get(f"/agent/{get_agent_model.encodedzuid}")
+    assert response.status_code == 404
+
+    response = client.get(f"/agent/{get_agent_model2.encodedzuid}")
+    assert response.status_code == 404
+
+    response = client.get(f"/listing/1001")
+    assert response.status_code == 404
+
+    response = client.get(f"/listing/1002")
+    assert response.status_code == 404
+
+    response = client.get(f"/listing/2001")
+    assert response.status_code == 404
+
+    response = client.get(f"/listing/2002")
+    assert response.status_code == 404
+
+    response = client.get(f"/agentIDs/TEST CITY/TEST STATE")
+    assert response.status_code == 404

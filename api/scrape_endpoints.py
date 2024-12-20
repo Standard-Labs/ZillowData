@@ -20,6 +20,11 @@ def get_async_inserter() -> AsyncInserter:
 async def handle_job(payload: ScrapeJobPayload, response: Response = None):
     """
 
+    *******************************************************************************************************
+    *** NOTE: Temporary Usage: Set 'update_existing' to True for ALL Requests Here Until Further Notice ***
+    *** This is because, we're doing the scraping in parts now, and not all in one request ***
+    *******************************************************************************************************
+
     if rescrape is True, rescrape the data for the city and state, regardless of the current status.
     if rescrape is False, initialize a new job ONLY IF the data does not exist OR the job encountered an error previously (JobStatus.NOT_SCRAPED or JobStatus.ERROR)
 
@@ -194,7 +199,7 @@ async def scrape_and_insert(payload: ScrapeJobPayload, update_listings=False, ag
             if update_listings:
                 agents = await asyncio.to_thread(update_listing_data, payload.city, payload.state, asyncInserter, agent_ids)
             else:
-                agents = await asyncio.to_thread(scrape, payload.city, payload.state, asyncInserter, payload.max_pages, payload.agent_types)
+                agents = await asyncio.to_thread(scrape, payload.city, payload.state, asyncInserter, payload.page_start, payload.page_end, payload.agent_types)
         finally:
             scrape_lock.release()
 

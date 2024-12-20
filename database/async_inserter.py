@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from typing import List, Tuple
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import delete, func, select
@@ -653,3 +654,58 @@ class AsyncInserter:
                 await session.rollback()
                 logfire.error(f"Error deleting listing {zpid}: {e}")
                 raise
+
+
+
+    async def delete_city(self, city: str, state: str):
+        """
+        Delete all agents associated with a specific city and state, thus deleting all data for the city.
+        """
+
+        try:
+            async with self.get_session() as session:
+
+                city_result = await session.execute(
+                    select(CityModel).where(
+                        CityModel.city == city.upper(),
+                        CityModel.state == state.upper()
+                    )
+                )
+                city_record = city_result.scalar_one_or_none()
+
+                if not city_record:
+                    raise HTTPException(status_code=404, detail=f"City {city}, {state} does not exist. Cannot delete for a non-existent city.")
+                
+                city_id = city_record.id
+
+                result = await session.execute(
+                    select(AgentModel.encodedzuid).join(AgentCityModel).join(CityModel).where(
+                       CityModel.id == city_id
+                    )
+                )
+                agent_ids = [row[0] for row in result.fetchall()]
+
+                if not agent_ids:
+                    logfire.error("No agents found for {city}, {state}.")
+                    raise HTTPException(status_code=404, detail=f"No agents found for {city}, {state}.")
+
+                try:
+                    for agent_id in agent_ids:
+                        await self.delete_agent(agent_id)
+                except:
+                    logfire.error(f"Error agent {agent_id} for {city}, {state}")
+                    await session.rollback()
+                    raise HTTPException(status_code=500, detail=f"Error deleting agent {agent_id} for {city}, {state}")
+
+                await session.execute(
+                    delete(CityModel).where(
+                        CityModel.id == city_id
+                    )
+                )
+
+                await session.commit()
+
+        except Exception as e:
+            logfire.error(f"Error deleting all agents for {city}, {state}: {e}")
+            await session.rollback()
+            raise

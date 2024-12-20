@@ -96,7 +96,8 @@ class JobStatus(Enum):
         return self.value + f"{city}, {state}" 
 
 class ScrapeJobPayload(BaseModel):
-    max_pages: int | None = None
+    page_start: int | None = None
+    page_end: int | None = None
     update_existing: bool | None = False
     city: str
     state: str

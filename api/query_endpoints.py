@@ -1,10 +1,11 @@
 """ This module contains the FastAPI endpoints for querying the database. """
 from typing import AsyncGenerator
 from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
-from database.models import Agent as AgentModel, City as CityModel, Listing as ListingModel, AgentCity as AgentCityModel
+from database.models import Agent as AgentModel, City as CityModel, Listing as ListingModel, AgentCity as AgentCityModel, Status as StatusModel
 from api.async_inserter import async_inserter
 
 
@@ -15,7 +16,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-@query_router.get("/agentIDs/by_city_state/{city}/{state}")
+@query_router.get("/agentIDs/{city}/{state}")
 async def get_agents_by_city_state(city: str, state: str, session: AsyncSession = Depends(get_session)):
     """
     Get a list of all agent IDs associated with a specific city and state.
@@ -144,5 +145,20 @@ async def delete_listing(listing_id: int):
         return {"message": f"Listing {listing_id} deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting listing {listing_id}: {e}")
+    
+
+@query_router.delete("/city/state/{city}/{state}")
+async def delete_agents_by_city(city: str, state: str):
+    """
+    Deletes all data for the city
+    """
+    try:
+        await async_inserter.delete_city(city, state)
+        return {"message": f"All Data associated with {city}, {state} deleted successfully"}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting agents for {city}, {state}: {e}")
+
 
     
