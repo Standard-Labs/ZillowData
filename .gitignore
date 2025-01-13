@@ -9,3 +9,4 @@ keys_tests.yaml
 # Testing
 idev_*.*
 *.pkl
+run/

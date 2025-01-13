@@ -99,7 +99,7 @@ def remove_duplicates(agents: List[Agent]) -> List[Agent]:
     return unique_agents
 
 
-@retry(retries=3, return_value=1)
+@retry(retries=3, return_value=25)
 def get_max_pages(city_name, state, agent_type) -> int:
     """Get max pages for specified agent type"""
 
