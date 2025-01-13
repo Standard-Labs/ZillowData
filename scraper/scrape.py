@@ -49,9 +49,24 @@ def retry(retries=3, delay=2, return_value=None):
 def fetch_agent_data(url: str, payload: dict) -> str:
     """Fetch agent data using ScraperAPI"""
     user_agent = random.choice(USER_AGENTS)
-    headers={'user-agent': user_agent}
+    HEADERS = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "en",
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent": user_agent
+    }
     payload['keep_headers'] = 'true'
-    response = requests.get('https://api.scraperapi.com/', params=payload, headers=headers, timeout=25)
+    response = requests.get('https://api.scraperapi.com/', params=payload, headers=HEADERS, timeout=25)
     return response.text
 
 
