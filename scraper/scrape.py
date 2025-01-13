@@ -23,7 +23,7 @@ from keys import KEYS
 API_KEY = KEYS.ScraperAPI.api_key
 MAX_WORKERS = CONFIG.ScrapeWorkers.max_workers
 
-def retry(retries=3, delay=2, return_value=None):
+def retry(retries=3, return_value=None):
     """Retry decorator"""
 
     def decorator(func):
@@ -35,8 +35,7 @@ def retry(retries=3, delay=2, return_value=None):
                 except Exception as e:
                     logfire.error(f"Error in {func.__name__} {args} {e}")
                     if attempt < retries:
-                        # print(f"Retrying in {delay} seconds...")
-                        time.sleep(delay)
+                        logfire.info(f"Retrying {func.__name__} {args} attempt {attempt + 1} of {retries}")
                     else:
                         logfire.error(f"MAJOR ERROR: ALL {retries} attempts failed for {func.__name__} {args} {e}")
             return return_value
@@ -100,7 +99,7 @@ def remove_duplicates(agents: List[Agent]) -> List[Agent]:
     return unique_agents
 
 
-@retry(retries=3, delay=5, return_value=1)
+@retry(retries=3, return_value=1)
 def get_max_pages(city_name, state, agent_type) -> int:
     """Get max pages for specified agent type"""
 
@@ -121,7 +120,7 @@ def get_max_pages(city_name, state, agent_type) -> int:
         raise ValueError(f"(Max Pages) Script tag not found for {agent_type}")
 
 
-@retry(retries=3, delay=2)
+@retry(retries=3)
 def handle_individual(agent: Agent) -> Agent:
     """Extract additional data for individual agent from their profile link"""
     if agent.profile_link:
@@ -233,7 +232,7 @@ def handle_individual(agent: Agent) -> Agent:
         return agent
 
 
-@retry(retries=3, delay=2)
+@retry(retries=3)
 def handle_page(city_name, state, agent_type, page_number) -> List[Agent]:
     """Initial scrape for agents on a page"""
 

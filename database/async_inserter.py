@@ -411,6 +411,8 @@ class AsyncInserter:
                     listing_agent_data = []
 
                     for agent in batch_agents:
+                        if not agent:
+                            continue
                         agent_exists = await self.agent_exists(agent, session)
                         if not update_existing and agent_exists:
                             logfire.info(f"Agent already exists in the database, skipping (update_existing Was False): {agent.encodedzuid}")
