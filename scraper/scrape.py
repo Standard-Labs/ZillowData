@@ -1,6 +1,5 @@
 import json
 import math
-import random
 import time
 from functools import wraps
 import logfire
@@ -11,6 +10,7 @@ from bs4 import BeautifulSoup
 import concurrent.futures
 import asyncio
 import csv
+import random
 
 from sqlalchemy import select
 from database.async_inserter import AsyncInserter
@@ -18,6 +18,7 @@ from scraper.models import Website, Phones, Address, Listing, Agent, agent_types
 from database.models import Agent as AgentModel, City as CityModel, Listing as ListingModel, AgentCity as AgentCityModel
 from config import CONFIG
 from keys import KEYS
+
 
 API_KEY = KEYS.ScraperAPI.api_key
 MAX_WORKERS = CONFIG.ScrapeWorkers.max_workers
@@ -45,14 +46,12 @@ def retry(retries=3, delay=2, return_value=None):
     return decorator
 
 
-# Random User-Agent for each request for now, waiting for ScraperAPI to get back about
-# the user-agent issues
 def fetch_agent_data(url: str, payload: dict) -> str:
     """Fetch agent data using ScraperAPI"""
     user_agent = random.choice(USER_AGENTS)
     headers={'user-agent': user_agent}
-    payload['keep-headers'] = 'true'
-    response = requests.get('https://api.scraperapi.com/', params=payload, headers=headers)
+    payload['keep_headers'] = 'true'
+    response = requests.get('https://api.scraperapi.com/', params=payload, headers=headers, timeout=25)
     return response.text
 
 
@@ -295,8 +294,10 @@ def scrape(city, state, async_inserter: AsyncInserter, page_start: int | None = 
             agent_data = []
             for agent_type in agent_types:
                 start = page_start if page_start is not None else 1
-                agent_type_max_pages = get_max_pages(city, state, agent_type)
-                end = page_end if page_end is not None else agent_type_max_pages
+                
+                end = page_end
+                if page_end is None:
+                    end = get_max_pages(city, state, agent_type)
 
                 for page_number in range(start, end + 1):
                     future = page_executor.submit(handle_page, city, state, agent_type, page_number)

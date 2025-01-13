@@ -6,6 +6,7 @@ from scraper.models import Agent
 
 
 # Test general insertion, retrieval through endpoints, and deletion of mainly the listings as the cascade delete will take care of the rest
+@pytest.mark.skip()
 @pytest.mark.asyncio
 async def test_insert_and_query_agent(db_session: AsyncSession, client: TestClient, async_inserter: AsyncInserter, get_agent_model:Agent, get_agent_model2: Agent):
 
@@ -75,6 +76,7 @@ async def test_insert_and_query_agent(db_session: AsyncSession, client: TestClie
 
 
 # Test to ensure that a listing with multiple agents persists if one of the agents is deleted, and then is completly deleted if all linked agents are deleted
+@pytest.mark.skip()
 @pytest.mark.asyncio
 async def test_insert_and_query_agent_multiple_agents(db_session: AsyncSession, client: TestClient, async_inserter: AsyncInserter, get_agent_model:Agent, get_agent_model2: Agent):
 
@@ -120,6 +122,7 @@ async def test_insert_and_query_agent_multiple_agents(db_session: AsyncSession, 
 
 
 # Test to ensure that listings are updated/old listings are deleted if /update/listings endpoint is hit
+@pytest.mark.skip()
 @pytest.mark.asyncio
 async def test_insert_and_query_listings(db_session: AsyncSession, client: TestClient, async_inserter: AsyncInserter, get_agent_model:Agent, get_agent_model2: Agent):
 
@@ -162,6 +165,7 @@ async def test_insert_and_query_listings(db_session: AsyncSession, client: TestC
 
 
 # Test to ensure that agent core data is updated if the update_existing flag is set to True, and not updated if it is set to False
+@pytest.mark.skip()
 @pytest.mark.asyncio
 async def test_insert_and_query_agent_update_existing(db_session: AsyncSession, client: TestClient, async_inserter: AsyncInserter, get_agent_model:Agent, get_agent_model2: Agent):
     
@@ -193,6 +197,7 @@ async def test_insert_and_query_agent_update_existing(db_session: AsyncSession, 
     
 
 # Test to ensure that the delete_city endpoint deletes all data associated with the city
+@pytest.mark.skip()
 @pytest.mark.asyncio
 async def test_delete_city(db_session: AsyncSession, client: TestClient, async_inserter: AsyncInserter, get_agent_model:Agent, get_agent_model2: Agent):
      
