@@ -519,7 +519,7 @@ class AsyncInserter:
                                 continue
                      
                         await session.commit()
-                        logfire.info(f"Batch {i // batch_size + 1} Completed For {city}, {state}")
+                        logfire.info(f"Batch {i // batch_size + 1} Completed For {city}, {state}. Inserted {len(agent_data)} agents.")
 
                     else:
                         logfire.error(f"No agent data found for batch {i // batch_size + 1} for {city}, {state}")
