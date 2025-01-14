@@ -36,6 +36,7 @@ def retry(retries=3, return_value=None):
                     logfire.error(f"Error in {func.__name__} {args} {e}")
                     if attempt < retries:
                         logfire.info(f"Retrying {func.__name__} {args} attempt {attempt + 1} of {retries}")
+                        time.sleep(3)
                     else:
                         logfire.error(f"MAJOR ERROR: ALL {retries} attempts failed for {func.__name__} {args} {e}")
             return return_value
