@@ -543,10 +543,10 @@ class AsyncInserter:
                     await session.rollback()
                     return
 
-                batch_size = 250
+                batch_size = 125
                 for i in range(0, len(agents), batch_size):
                     batch_agents = agents[i:i + batch_size]
-                    batch_agents = [agent for agent in batch_agents if agent]
+                    batch_agents = [agent for agent in batch_agents if agent and agent.encodedzuid]
                     logfire.info(f"Starting updating intitial data insertion for batch {i // batch_size + 1} with {len(batch_agents)} agents")
 
                     phones_data = []
