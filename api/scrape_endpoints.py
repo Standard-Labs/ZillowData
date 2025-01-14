@@ -227,15 +227,8 @@ async def update_initial_data_route(payload: InitialDataRequest, response: Respo
     Pass in data as {"encodedzuid": "profilelink"} for each agent to update the initial data for a city and state 
     This is for those cities where only initial data was scraped, and we need to now get the specific profile data for each agent
     
-    Temporary fix to split up scraping process:
-    Run this query: 
-    SELECT agent.encodedzuid, agent.profile_link FROM agent
-    JOIN agent_city on agent.encodedzuid = agent_city.agent_id
-    JOIN city on city.id = agent_city.city_id 
-    WHERE city.id = 
-
-    export result as json and pass to run/format.py to format as {"encodedzuid": "profilelink"} for each agent
-    Then can pass here and done!
+    Temporary fix to split up scraping process for profile data
+    run the run/update_initial.py script to hit this endpoint
     """
     
     try:
