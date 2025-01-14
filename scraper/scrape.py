@@ -23,7 +23,7 @@ from keys import KEYS
 API_KEY = KEYS.ScraperAPI.api_key
 MAX_WORKERS = CONFIG.ScrapeWorkers.max_workers
 
-def retry(retries=3, return_value=None):
+def retry(retries=5, return_value=None):
     """Retry decorator"""
 
     def decorator(func):
