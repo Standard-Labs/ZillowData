@@ -23,7 +23,7 @@ from keys import KEYS
 API_KEY = KEYS.ScraperAPI.api_key
 MAX_WORKERS = CONFIG.ScrapeWorkers.max_workers
 
-def retry(retries=5, return_value=None):
+def retry(retries=3, return_value=None):
     """Retry decorator"""
 
     def decorator(func):
@@ -330,12 +330,12 @@ def scrape(city, state, async_inserter: AsyncInserter, page_start: int | None = 
 
         agent_data = remove_duplicates(agent_data)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as agent_executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as agent_executor:
             processed_agents = []
             for agent in agent_executor.map(handle_individual, agent_data):
                 if agent:
                     processed_agents.append(agent)
-
+        
         asyncio.run(insert_status(city, state, "COMPLETED", async_inserter))
         return processed_agents
 
@@ -386,4 +386,28 @@ async def insert_status(city: str, state: str, status: str, async_inserter: Asyn
     async with async_inserter.get_session() as session:
         await async_inserter.insert_status(city, state, status, session)
 
-        
+
+def update_initial_data(agent_profile: dict, city: str, state: str) -> List[Agent]:
+    """
+    This function is used for agents, who's initial data has been inserted but their profile data has not been updated.
+    Takes in a dict where the key is the agent's encodedZuid and the value is the agent's profile link.
+    """
+    try:
+        logfire.info(f"Updating initial data for {city}, {state}")
+        agent_data: list[Agent] = []
+        for agentID, profile_link in agent_profile.items():
+            agent_data.append(Agent(encodedZuid=agentID, profileLink=profile_link))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as listing_executor:
+            futures = []
+            for agent in agent_data:
+                future = listing_executor.submit(handle_individual, agent)
+                futures.append(future)
+
+            concurrent.futures.wait(futures)
+            updated_agents = [future.result() for future in futures]
+
+        return updated_agents
+    except Exception as e:
+        logfire.error(f"Error updating initial data: {e} for {city}, {state}")
+        return []

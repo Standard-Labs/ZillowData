@@ -1,9 +1,11 @@
 """ This module contains the FastAPI endpoints for (re)/initializing jobs and status. """
 import asyncio
+from typing import Dict
 from fastapi import APIRouter, Response
 import logfire
+from pydantic import BaseModel
 from starlette import status
-from scraper.scrape import scrape, update_listing_data
+from scraper.scrape import scrape, update_listing_data, update_initial_data
 from scraper.models import JobStatus, ScrapeJobPayload
 from database.models import Agent as AgentModel, City as CityModel, AgentCity as AgentCityModel
 from sqlalchemy.future import select
@@ -15,6 +17,12 @@ scrape_lock = asyncio.Lock()
 
 def get_async_inserter() -> AsyncInserter:
     return asyncInserter
+
+class InitialDataRequest(BaseModel):
+    data: Dict[str, str]
+    city: str
+    state: str
+
 
 @scrape_router.post("/scrape")
 async def handle_job(payload: ScrapeJobPayload, response: Response = None):
@@ -85,6 +93,7 @@ async def handle_job(payload: ScrapeJobPayload, response: Response = None):
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Error", "error": str(e)}    
 
+
 @scrape_router.post("/update/listings")
 async def update_listings(payload: ScrapeJobPayload, response: Response = None):
     """
@@ -145,6 +154,7 @@ async def update_listings(payload: ScrapeJobPayload, response: Response = None):
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Error", "error": str(e)}
 
+
 @scrape_router.get("/status/{city}/{state}")
 async def check_status(city: str, state: str, response: Response = None):
     """
@@ -181,6 +191,7 @@ async def check_status(city: str, state: str, response: Response = None):
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Error", "error": str(e)}
 
+
 async def scrape_and_insert(payload: ScrapeJobPayload, update_listings=False, agent_ids=None):
     """
     update_listings, just a flag so we only update listings, not core agent data
@@ -211,3 +222,25 @@ async def scrape_and_insert(payload: ScrapeJobPayload, update_listings=False, ag
     except Exception as e:
         logfire.error(f"Error in scrape_and_insert for {payload.city}, {payload.state}. Error: {str(e)}")
 
+
+@scrape_router.post("/update-initial-data")
+async def update_initial_data_route(payload: InitialDataRequest, response: Response = None):
+    """ 
+    Pass in data as {"encodedzuid": "profilelink"} for each agent to update the initial data for a city and state 
+    This is for those cities where only initial data was scraped, and we need to now get the specific profile data for each agent
+    """
+    
+    try:
+        logfire.info(f"Awaiting scrape lock for {payload.city}, {payload.state}...")
+        await scrape_lock.acquire()
+        logfire.info(f"Scrape lock acquired for {payload.city}, {payload.state}... Starting scrape to update initial data")
+        
+        try:
+            agents = await asyncio.to_thread(update_initial_data, payload.data, payload.city, payload.state)
+        finally:
+            scrape_lock.release()
+
+        await asyncInserter.db_update_initial_data(agents, payload.city, payload.state)
+
+    except Exception as e:
+        logfire.error(f"Error in update initial data for {payload.city}, {payload.state}. Error: {str(e)}")
