@@ -47,27 +47,28 @@ def retry(retries=3, return_value=None):
 
 def fetch_agent_data(url: str, payload: dict) -> str:
     """Fetch agent data using ScraperAPI"""
-    user_agent = random.choice(USER_AGENTS)
+    
     HEADERS = {
+        "Accept-Encoding": "gzip, deflate, br, zstd",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "Accept-Language": "en",
         "Content-Type": "application/json",
-        "Cache-Control": "no-cache",
+        "Cache-Control": "max-age=0",
         "Pragma": "no-cache",
-        "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        "Sec-Ch-Ua-Mobile": "?1",
+        "Sec-Ch-Ua-Platform": '"Android"',
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-Site": "same-origin",
         "Sec-Fetch-User": "?1",
         "Upgrade-Insecure-Requests": "1",
-        "User-Agent": user_agent
+        "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
     }
     payload['keep_headers'] = 'true'
     response = requests.get('https://api.scraperapi.com/', params=payload, headers=HEADERS, timeout=25)
     return response.text
-
+        
 
 def parse_json_data(script_tag) -> dict:
     """Parse JSON data from script tag"""
@@ -328,7 +329,8 @@ def scrape(city, state, async_inserter: AsyncInserter, page_start: int | None = 
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as agent_executor:
             processed_agents = []
             for agent in agent_executor.map(handle_individual, agent_data):
-                processed_agents.append(agent)
+                if agent:
+                    processed_agents.append(agent)
 
         asyncio.run(insert_status(city, state, "COMPLETED", async_inserter))
         return processed_agents

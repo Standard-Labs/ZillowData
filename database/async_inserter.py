@@ -401,6 +401,7 @@ class AsyncInserter:
                 batch_size = 250
                 for i in range(0, len(agents), batch_size):
                     batch_agents = agents[i:i + batch_size]
+                    batch_agents = [agent for agent in batch_agents if agent]
                     logfire.info(f"Starting batch {i // batch_size + 1} with {len(batch_agents)} agents for {city}, {state}")
 
                     agent_data = []
@@ -411,8 +412,6 @@ class AsyncInserter:
                     listing_agent_data = []
 
                     for agent in batch_agents:
-                        if not agent:
-                            continue
                         agent_exists = await self.agent_exists(agent, session)
                         if not update_existing and agent_exists:
                             logfire.info(f"Agent already exists in the database, skipping (update_existing Was False): {agent.encodedzuid}")
