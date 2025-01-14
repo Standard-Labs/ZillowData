@@ -533,13 +533,13 @@ class AsyncInserter:
                 await session.rollback()
 
 
-    async def db_update_initial_data(self, agents: List[Agent], city: str, state: str):
+    async def db_update_initial_data(self, agents: List[Agent]):
 
         async with self.get_session() as session:
             try:
-                logfire.info(f"Starting Updating Initial Data Insertion Process for {city}, {state}")
+                logfire.info(f"Starting Updating Initial Data Insertion Process")
                 if not agents:
-                    logfire.error(f"No agents found for {city}, {state} (Nothing passed to the inserter initially)")
+                    logfire.error(f"No agents found (Nothing passed to the inserter initially)")
                     await session.rollback()
                     return
 
@@ -547,9 +547,8 @@ class AsyncInserter:
                 for i in range(0, len(agents), batch_size):
                     batch_agents = agents[i:i + batch_size]
                     batch_agents = [agent for agent in batch_agents if agent]
-                    logfire.info(f"Starting updating intitial data insertion for batch {i // batch_size + 1} with {len(batch_agents)} agents for {city}, {state}")
+                    logfire.info(f"Starting updating intitial data insertion for batch {i // batch_size + 1} with {len(batch_agents)} agents")
 
-                    agent_data = [] # just holds email, everything else is already in database from the initial insertion
                     phones_data = []
                     websites_data = []
                     listing_data = []
@@ -558,28 +557,23 @@ class AsyncInserter:
                     for agent in batch_agents:
                         agent_exists = await self.agent_exists(agent, session)
                         if agent_exists:
-
                             logfire.info(f"Preparing updated data for agent: {agent.encodedzuid}")
-                            agent_data.append({"email": agent.email, "encodedzuid": agent.encodedzuid})
                             phones_data.extend(await self.prepare_phones(agent, agent_exists, session))
                             websites_data.extend(await self.prepare_websites(agent, agent_exists, session))
                             listings_all, listing_agents = await self.prepare_listings(agent, agent_exists, session)
                             listing_data.extend(listings_all)
                             listing_agent_data.extend(listing_agents)
 
-                    if agent_data:
+                    if agent_exists:
                         try:
-                            stmt = pg_insert(AgentModel).values(agent_data).on_conflict_do_update(
-                                index_elements=['encodedzuid'],
-                                set_={
-                                    'email': pg_insert(AgentModel).excluded.email,
-                                }
+                            stmt = (
+                                AgentModel.__table__.update()
+                                .where(AgentModel.encodedzuid == agent.encodedzuid)
+                                .values(email=agent.email)
                             )
                             await session.execute(stmt)
-
                         except Exception as batch_error:
-                            logfire.error(f"Error executing UPDATED INTIIAL DATA Agent Table insertion for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
-                            await self.insert_status(city, state, "ERROR", session)
+                            logfire.error(f"Error executing UPDATED INTIIAL DATA Agent Table insertion for batch {i // batch_size + 1} for {agent.encodedzuid}: {batch_error}")
                             await session.rollback()
                             continue
 
@@ -589,8 +583,7 @@ class AsyncInserter:
                                 stmt = pg_insert(PhoneModel).values(phones_data).on_conflict_do_nothing()
                                 await session.execute(stmt)
                             except Exception as batch_error:
-                                logfire.error(f"Error executing UPDATED INTIIAL DATA phone data for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
-                                await self.insert_status(city, state, "ERROR", session)
+                                logfire.error(f"Error executing UPDATED INTIIAL DATA phone data for batch {i // batch_size + 1} for {agent.encodedzuid}: {batch_error}")
                                 await session.rollback()
                                 continue
 
@@ -600,8 +593,7 @@ class AsyncInserter:
                                 stmt = pg_insert(WebsiteModel).values(websites_data).on_conflict_do_nothing()
                                 await session.execute(stmt)
                             except Exception as batch_error:
-                                logfire.error(f"Error executing UPDATED INTIIAL DATA data for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
-                                await self.insert_status(city, state, "ERROR", session)
+                                logfire.error(f"Error executing UPDATED INTIIAL DATA data for batch {i // batch_size + 1} for {agent.encodedzuid}: {batch_error}")
                                 await session.rollback()
                                 continue
 
@@ -611,8 +603,7 @@ class AsyncInserter:
                                 stmt = pg_insert(ListingModel).values(listing_data).on_conflict_do_nothing()
                                 await session.execute(stmt)
                             except Exception as batch_error:
-                                logfire.error(f"Error executing UPDATED INTIIAL DATA for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
-                                await self.insert_status(city, state, "ERROR", session)
+                                logfire.error(f"Error executing UPDATED INTIIAL DATA for batch {i // batch_size + 1} for {agent.encodedzuid}: {batch_error}")
                                 await session.rollback()
                                 continue
                         
@@ -622,24 +613,20 @@ class AsyncInserter:
                                 stmt = pg_insert(ListingAgentModel).values(listing_agent_data).on_conflict_do_nothing()
                                 await session.execute(stmt)
                             except Exception as batch_error:
-                                logfire.error(f"Error executing UPDATED INTIIAL DATA for batch {i // batch_size + 1} for {city}, {state}: {batch_error}")
-                                await self.insert_status(city, state, "ERROR", session)
+                                logfire.error(f"Error executing UPDATED INTIIAL DATA for batch {i // batch_size + 1} for {agent.encodedzuid}: {batch_error}")
                                 await session.rollback()
                                 continue
                      
                         await session.commit()
-                        logfire.info(f"Batch {i // batch_size + 1} Completed For {city}, {state}. Inserted {len(agent_data)} agents.")
+                        logfire.info(f"Batch {i // batch_size + 1} Completed Data Update For {batch_agents}. Inserted {len(batch_agents)} agents.")
 
                     else:
-                        logfire.error(f"No agent data found for batch {i // batch_size + 1} for {city}, {state}")
-                        await self.insert_status(city, state, "ERROR", session)
+                        logfire.error(f"No agent data found for batch {i // batch_size + 1}")
                         continue
 
-                await self.insert_status(city, state, "COMPLETED", session)
-                logfire.info(f"Insertion process completed for {city}, {state}")
+                logfire.info(f"Updated Additional Data process completed for {[agent.encodedzuid for agent in agents]}")
             except Exception as e:
-                logfire.error(f"Error inserting agents for {city}, {state}: {e}")
-                await self.insert_status(city, state, "ERROR", session)
+                logfire.error(f"Error updating agents: {e}")
                 await session.rollback()
 
 

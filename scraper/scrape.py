@@ -387,13 +387,13 @@ async def insert_status(city: str, state: str, status: str, async_inserter: Asyn
         await async_inserter.insert_status(city, state, status, session)
 
 
-def update_initial_data(agent_profile: dict, city: str, state: str) -> List[Agent]:
+def update_initial_data(agent_profile: dict) -> List[Agent]:
     """
     This function is used for agents, who's initial data has been inserted but their profile data has not been updated.
     Takes in a dict where the key is the agent's encodedZuid and the value is the agent's profile link.
     """
     try:
-        logfire.info(f"Updating initial data for {city}, {state}")
+        logfire.info(f"In scraper, Updating initial data for ")
         agent_data: list[Agent] = []
         for agentID, profile_link in agent_profile.items():
             agent_data.append(Agent(encodedZuid=agentID, profileLink=profile_link))
@@ -409,5 +409,5 @@ def update_initial_data(agent_profile: dict, city: str, state: str) -> List[Agen
 
         return updated_agents
     except Exception as e:
-        logfire.error(f"Error updating initial data: {e} for {city}, {state}")
+        logfire.error(f"Error updating initial data: {e} for {agent_profile}")
         return []
