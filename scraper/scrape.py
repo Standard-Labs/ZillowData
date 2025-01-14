@@ -49,26 +49,28 @@ def retry(retries=5, return_value=None):
 def fetch_agent_data(url: str, payload: dict) -> str:
     """Fetch agent data using ScraperAPI"""
 
-    HEADERS = {
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        "Accept-Language": "en",
-        "Content-Type": "application/json",
-        "Cache-Control": "max-age=0",
-        "Pragma": "no-cache",
-        "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-        "Sec-Ch-Ua-Mobile": "?1",
-        "Sec-Ch-Ua-Platform": '"Android"',
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1",
-        "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
-    }
+    # HEADERS = {
+    #     "Accept-Encoding": "gzip, deflate, br, zstd",
+    #     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    #     "Accept-Language": "en",
+    #     "Content-Type": "application/json",
+    #     "Cache-Control": "max-age=0",
+    #     "Pragma": "no-cache",
+    #     "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    #     "Sec-Ch-Ua-Mobile": "?1",
+    #     "Sec-Ch-Ua-Platform": '"Android"',
+    #     "Sec-Fetch-Dest": "document",
+    #     "Sec-Fetch-Mode": "navigate",
+    #     "Sec-Fetch-Site": "same-origin",
+    #     "Sec-Fetch-User": "?1",
+    #     "Upgrade-Insecure-Requests": "1",
+    #     "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+    # }
+
     payload['keep_headers'] = 'true'
-    response = requests.get('https://api.scraperapi.com/', params=payload, headers=HEADERS)
+    response = requests.get('https://api.scraperapi.com/', params=payload)
     response.raise_for_status()
+    logfire.info("Successfully fetched agent data")
     return response.text
         
 
