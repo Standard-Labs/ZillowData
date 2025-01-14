@@ -47,7 +47,7 @@ def retry(retries=3, return_value=None):
 
 def fetch_agent_data(url: str, payload: dict) -> str:
     """Fetch agent data using ScraperAPI"""
-    
+
     HEADERS = {
         "Accept-Encoding": "gzip, deflate, br, zstd",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -66,7 +66,8 @@ def fetch_agent_data(url: str, payload: dict) -> str:
         "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
     }
     payload['keep_headers'] = 'true'
-    response = requests.get('https://api.scraperapi.com/', params=payload, headers=HEADERS, timeout=25)
+    response = requests.get('https://api.scraperapi.com/', params=payload, headers=HEADERS)
+    response.raise_for_status()
     return response.text
         
 
