@@ -624,7 +624,7 @@ class AsyncInserter:
                         logfire.error(f"No agent data found for batch {i // batch_size + 1}")
                         continue
 
-                logfire.info(f"Updated Additional Data process completed for {[agent.encodedzuid for agent in agents]}")
+                # logfire.info(f"Updated Additional Data process completed for {[agent.encodedzuid for agent in agents]}")
             except Exception as e:
                 logfire.error(f"Error updating agents: {e}")
                 await session.rollback()
