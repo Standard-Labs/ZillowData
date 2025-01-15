@@ -46,7 +46,7 @@ def retry(retries=3, return_value=None):
     return decorator
 
 
-def fetch_agent_data(url: str, payload: dict) -> str:
+def fetch_agent_data(url: str, payload: dict, isIndividual: bool | None = False) -> str:
     """Fetch agent data using ScraperAPI"""
 
     HEADERS = {
@@ -67,7 +67,11 @@ def fetch_agent_data(url: str, payload: dict) -> str:
         "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
     }
 
-    payload['keep_headers'] = 'true'
+    # payload['keep_headers'] = 'true'
+
+    if isIndividual:
+        payload['premium'] = 'true'
+
     response = requests.get('https://api.scraperapi.com/', params=payload, headers=HEADERS)
     response.raise_for_status()
     logfire.info("Successfully fetched agent data")
@@ -131,7 +135,7 @@ def handle_individual(agent: Agent) -> Agent:
     if agent.profile_link:
         url = f'https://www.zillow.com/{agent.profile_link}'
         payload = {'api_key': API_KEY, 'url': url}
-        response_text = fetch_agent_data(url, payload)
+        response_text = fetch_agent_data(url, payload, isIndividual=True)
         soup = BeautifulSoup(response_text, 'html.parser')
         script_tag = soup.find("script", id="__NEXT_DATA__")
 
