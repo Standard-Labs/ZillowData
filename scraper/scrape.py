@@ -105,6 +105,7 @@ def remove_duplicates(agents: List[Agent]) -> List[Agent]:
         if agent.encodedzuid not in seen:
             unique_agents.append(agent)
             seen.add(agent.encodedzuid)
+    logfire.info(f"Removed {len(agents) - len(unique_agents)} duplicate agents")
     return unique_agents
 
 
@@ -334,14 +335,24 @@ def scrape(city, state, async_inserter: AsyncInserter, page_start: int | None = 
 
         agent_data = remove_duplicates(agent_data)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as agent_executor:
-            processed_agents = []
-            for agent in agent_executor.map(handle_individual, agent_data):
-                if agent:
-                    processed_agents.append(agent)
+        return agent_data
+
+
+        # -------------------------------------------------------------------------------------------
+        # splitting the scraping process into two steps now, initial data(handle_page) and everything else(handle_individual)
+        # commenting out below code to facilitate the change. Modified databasee.async_inserter's 'insert_agents' function to handle this change too
+        # run scripts/main.py to run this part of the scraping for a city(step 1)
+        # run scripts/update_initial.py to run the second part of the scraping for a city(step 2)
+        # -------------------------------------------------------------------------------------------
+
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as agent_executor:
+        #     processed_agents = []
+        #     for agent in agent_executor.map(handle_individual, agent_data):
+        #         if agent:
+        #             processed_agents.append(agent)
         
-        asyncio.run(insert_status(city, state, "COMPLETED", async_inserter))
-        return processed_agents
+        # asyncio.run(insert_status(city, state, "COMPLETED", async_inserter))
+        # return processed_agents
 
     except Exception as e:
         logfire.error(f"Error scraping data for {city}, {state}: {str(e)}")

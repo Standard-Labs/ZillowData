@@ -423,11 +423,11 @@ class AsyncInserter:
                             if main_agent_data:
                                 agent_data.append(main_agent_data)
                                 agent_city_data.append(self.prepare_agent_city(agent, city_id))
-                                phones_data.extend(await self.prepare_phones(agent, agent_exists, session))
-                                websites_data.extend(await self.prepare_websites(agent, agent_exists, session))
-                                listings_all, listing_agents = await self.prepare_listings(agent, agent_exists, session)
-                                listing_data.extend(listings_all)
-                                listing_agent_data.extend(listing_agents)
+                                # phones_data.extend(await self.prepare_phones(agent, agent_exists, session))
+                                # websites_data.extend(await self.prepare_websites(agent, agent_exists, session))
+                                # listings_all, listing_agents = await self.prepare_listings(agent, agent_exists, session)
+                                # listing_data.extend(listings_all)
+                                # listing_agent_data.extend(listing_agents)
                             else:
                                 logfire.error(f"Error preparing data for agent: {agent.encodedzuid}")
                                 continue
@@ -555,76 +555,71 @@ class AsyncInserter:
                     listing_agent_data = []
 
                     for agent in batch_agents:
-                        agent_exists = await self.agent_exists(agent, session)
-                        if agent_exists:
-                            logfire.info(f"Preparing updated data for agent: {agent.encodedzuid}")
-                            phones_data.extend(await self.prepare_phones(agent, agent_exists, session))
-                            websites_data.extend(await self.prepare_websites(agent, agent_exists, session))
-                            listings_all, listing_agents = await self.prepare_listings(agent, agent_exists, session)
-                            listing_data.extend(listings_all)
-                            listing_agent_data.extend(listing_agents)
+                        logfire.info(f"Preparing updated data for agent: {agent.encodedzuid}")
+                        phones_data.extend(await self.prepare_phones(agent, True, session))
+                        websites_data.extend(await self.prepare_websites(agent, True, session))
+                        listings_all, listing_agents = await self.prepare_listings(agent, True, session)
+                        listing_data.extend(listings_all)
+                        listing_agent_data.extend(listing_agents)
 
-                    if agent_exists:
+    
                         try:
+                            logfire.info("Updating email for agent: {agent.encodedzuid}")
                             stmt = (
                                 AgentModel.__table__.update()
                                 .where(AgentModel.encodedzuid == agent.encodedzuid)
                                 .values(email=agent.email)
                             )
                             await session.execute(stmt)
-                        except Exception as batch_error:
-                            logfire.error(f"Error executing UPDATED INTIIAL DATA Agent Table insertion for batch {i // batch_size + 1} for {agent.encodedzuid}: {batch_error}")
+                        except Exception as email_error:
+                            logfire.error(f"Error executing updating email Agent Table insertion for {agent.encodedzuid}: {email_error}")
                             await session.rollback()
                             continue
 
-                        if phones_data:
-                            try:
-                                logfire.info(f"Starting executing phone data for batch {i // batch_size + 1}")
-                                stmt = pg_insert(PhoneModel).values(phones_data).on_conflict_do_nothing()
-                                await session.execute(stmt)
-                            except Exception as batch_error:
-                                logfire.error(f"Error executing UPDATED INTIIAL DATA phone data for batch {i // batch_size + 1} for {agent.encodedzuid}: {batch_error}")
-                                await session.rollback()
-                                continue
+                    if phones_data:
+                        try:
+                            logfire.info(f"Starting executing phone data for batch {i // batch_size + 1}")
+                            stmt = pg_insert(PhoneModel).values(phones_data).on_conflict_do_nothing()
+                            await session.execute(stmt)
+                        except Exception as batch_error:
+                            logfire.error(f"Error executing UPDATED INTIIAL DATA phone data for batch {i // batch_size + 1}: {batch_error}")
+                            await session.rollback()
+                            continue
 
-                        if websites_data:
-                            try:
-                                logfire.info(f"Starting executing website data for batch {i // batch_size + 1}")
-                                stmt = pg_insert(WebsiteModel).values(websites_data).on_conflict_do_nothing()
-                                await session.execute(stmt)
-                            except Exception as batch_error:
-                                logfire.error(f"Error executing UPDATED INTIIAL DATA data for batch {i // batch_size + 1} for {agent.encodedzuid}: {batch_error}")
-                                await session.rollback()
-                                continue
+                    if websites_data:
+                        try:
+                            logfire.info(f"Starting executing website data for batch {i // batch_size + 1}")
+                            stmt = pg_insert(WebsiteModel).values(websites_data).on_conflict_do_nothing()
+                            await session.execute(stmt)
+                        except Exception as batch_error:
+                            logfire.error(f"Error executing UPDATED INTIIAL DATA data for batch {i // batch_size + 1}: {batch_error}")
+                            await session.rollback()
+                            continue
 
-                        if listing_data:
-                            try:
-                                logfire.info(f"Starting executing listing data for batch {i // batch_size + 1}")
-                                stmt = pg_insert(ListingModel).values(listing_data).on_conflict_do_nothing()
-                                await session.execute(stmt)
-                            except Exception as batch_error:
-                                logfire.error(f"Error executing UPDATED INTIIAL DATA for batch {i // batch_size + 1} for {agent.encodedzuid}: {batch_error}")
-                                await session.rollback()
-                                continue
-                        
-                        if listing_agent_data:
-                            try:
-                                logfire.info(f"Starting executing listing-agent data for batch {i // batch_size + 1}")
-                                stmt = pg_insert(ListingAgentModel).values(listing_agent_data).on_conflict_do_nothing()
-                                await session.execute(stmt)
-                            except Exception as batch_error:
-                                logfire.error(f"Error executing UPDATED INTIIAL DATA for batch {i // batch_size + 1} for {agent.encodedzuid}: {batch_error}")
-                                await session.rollback()
-                                continue
-                     
-                        await session.commit()
-                        logfire.info(f"Batch {i // batch_size + 1} Completed Data Update For {batch_agents}. Inserted {len(batch_agents)} agents.")
+                    if listing_data:
+                        try:
+                            logfire.info(f"Starting executing listing data for batch {i // batch_size + 1}")
+                            stmt = pg_insert(ListingModel).values(listing_data).on_conflict_do_nothing()
+                            await session.execute(stmt)
+                        except Exception as batch_error:
+                            logfire.error(f"Error executing UPDATED INTIIAL DATA for batch {i // batch_size + 1}: {batch_error}")
+                            await session.rollback()
+                            continue
+                    
+                    if listing_agent_data:
+                        try:
+                            logfire.info(f"Starting executing listing-agent data for batch {i // batch_size + 1}")
+                            stmt = pg_insert(ListingAgentModel).values(listing_agent_data).on_conflict_do_nothing()
+                            await session.execute(stmt)
+                        except Exception as batch_error:
+                            logfire.error(f"Error executing UPDATED INTIIAL DATA for batch {i // batch_size + 1}: {batch_error}")
+                            await session.rollback()
+                            continue
+                    
+                    await session.commit()
+                    logfire.info(f"Batch {i // batch_size + 1} Completed Data Update For {batch_agents}. Inserted {len(batch_agents)} agents.")
 
-                    else:
-                        logfire.error(f"No agent data found for batch {i // batch_size + 1}")
-                        continue
-
-                # logfire.info(f"Updated Additional Data process completed for {[agent.encodedzuid for agent in agents]}")
+                logfire.info(f"Updated Additional Data process completed for {[agent.encodedzuid for agent in agents]}")
             except Exception as e:
                 logfire.error(f"Error updating agents: {e}")
                 await session.rollback()
