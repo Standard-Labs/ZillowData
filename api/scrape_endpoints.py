@@ -62,7 +62,7 @@ async def handle_job(payload: ScrapeJobPayload, response: Response = None):
                 return {"message": "Error", "error": f"Error in Re-scraping/insertion job. {complete_status}"}
 
         else:
-            if job_status is JobStatus.NOT_SCRAPED or job_status is JobStatus.ERROR:
+            if job_status is JobStatus.NOT_SCRAPED or job_status is JobStatus.ERROR or JobStatus.COMPLETED:
                 logfire.info(f"Initializing job for {city}, {state}")
                 await scrape_and_insert(payload)
                 async with asyncInserter.get_session() as session:
@@ -75,9 +75,9 @@ async def handle_job(payload: ScrapeJobPayload, response: Response = None):
                     response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
                     return {"message": "Error", "error": f"Error in scraping/insertion job. {complete_status}"}
 
-            elif job_status is JobStatus.COMPLETED:
-                response.status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
-                return {"message": f"Data is Already Available For {city}, {state}. Set 'update_existing' Flag To True To Update Data."}
+            # elif job_status is JobStatus.COMPLETED:
+            #     response.status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+            #     return {"message": f"Data is Already Available For {city}, {state}. Set 'update_existing' Flag To True To Update Data."}
 
             elif job_status is JobStatus.PENDING:
                 response.status_code = status.HTTP_409_CONFLICT

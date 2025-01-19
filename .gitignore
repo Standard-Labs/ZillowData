@@ -9,4 +9,6 @@ keys_tests.yaml
 # Testing
 idev_*.*
 *.pkl
+
+# Scripts
 scripts/
