@@ -38,7 +38,7 @@ def retry(retries=3, return_value=None):
                     if attempt < retries:
                         logfire.info(f"Retrying {func.__name__} {args} attempt {attempt + 1} of {retries}")
 
-                        if func.__name == "handle_page":
+                        if func.__name__ == "handle_page":
                             kwargs['use_premium'] = True
                             logfire.info(f"Retrying with PREMIUM for {func.__name__} {args} attempt {attempt + 1} of {retries}")
                         
