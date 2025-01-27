@@ -31,11 +31,17 @@ def retry(retries=3, return_value=None):
         def wrapper(*args, **kwargs):
             for attempt in range(1, retries + 1):
                 try:
+
                     return func(*args, **kwargs)
                 except Exception as e:
                     logfire.error(f"Error in {func.__name__} {args} {e}")
                     if attempt < retries:
                         logfire.info(f"Retrying {func.__name__} {args} attempt {attempt + 1} of {retries}")
+
+                        if func.__name == "handle_page":
+                            kwargs['use_premium'] = True
+                            logfire.info(f"Retrying with PREMIUM for {func.__name__} {args} attempt {attempt + 1} of {retries}")
+                        
                         time.sleep(3)
                     else:
                         logfire.error(f"MAJOR ERROR: ALL {retries} attempts failed for {func.__name__} {args} {e}")
@@ -46,7 +52,7 @@ def retry(retries=3, return_value=None):
     return decorator
 
 
-def fetch_agent_data(url: str, payload: dict, isIndividual: bool | None = False) -> str:
+def fetch_agent_data(url: str, payload: dict, use_premium: bool | None = False) -> str:
     """Fetch agent data using ScraperAPI"""
 
     HEADERS = {
@@ -69,7 +75,7 @@ def fetch_agent_data(url: str, payload: dict, isIndividual: bool | None = False)
 
     # payload['keep_headers'] = 'true'
 
-    if isIndividual:
+    if use_premium:
         payload['premium'] = 'true'
 
     response = requests.get('https://api.scraperapi.com/', params=payload, headers=HEADERS)
@@ -131,12 +137,12 @@ def get_max_pages(city_name, state, agent_type) -> int:
 
 
 @retry(retries=3)
-def handle_individual(agent: Agent) -> Agent:
+def handle_individual(agent: Agent, use_premium=True) -> Agent:
     """Extract additional data for individual agent from their profile link"""
     if agent.profile_link:
         url = f'https://www.zillow.com/{agent.profile_link}'
         payload = {'api_key': API_KEY, 'url': url}
-        response_text = fetch_agent_data(url, payload, isIndividual=True)
+        response_text = fetch_agent_data(url, payload, use_premium=use_premium)
         soup = BeautifulSoup(response_text, 'html.parser')
         script_tag = soup.find("script", id="__NEXT_DATA__")
 
@@ -243,13 +249,13 @@ def handle_individual(agent: Agent) -> Agent:
 
 
 @retry(retries=3)
-def handle_page(city_name, state, agent_type, page_number) -> List[Agent]:
+def handle_page(city_name, state, agent_type, page_number, use_premium=False) -> List[Agent]:
     """Initial scrape for agents on a page"""
 
     logfire.info(f"Initial Scrape for Page {page_number}  Agent Type: {agent_type}")
     url = f'https://www.zillow.com/professionals/real-estate-agent-reviews/{city_name}-{state.lower()}/?specialties={agent_type}&page={page_number}'
     payload = {'api_key': API_KEY, 'url': url}
-    response_text = fetch_agent_data(url, payload)
+    response_text = fetch_agent_data(url, payload, use_premium=use_premium)
     soup = BeautifulSoup(response_text, 'html.parser')
     script_tag = soup.find("script", id="__NEXT_DATA__")
 
