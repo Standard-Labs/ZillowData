@@ -1,2 +1,2 @@
 ScrapeWorkers:
-  max_workers: 10
+  max_workers: 30
